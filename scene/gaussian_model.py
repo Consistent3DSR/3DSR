@@ -423,7 +423,7 @@ class GaussianModel:
         self.denom = self.denom[valid_points_mask]
         self.max_radii2D = self.max_radii2D[valid_points_mask]
 
-    def cat_tensors_to_optimizer(self, tensors_dict):
+    def cat_tensors_to_optimizer(self, tensors_dict, copy_original_en=True):
         optimizable_tensors = {}
         for group in self.optimizer.param_groups:
             assert len(group["params"]) == 1
@@ -439,13 +439,16 @@ class GaussianModel:
                 self.optimizer.state[group['params'][0]] = stored_state
 
                 optimizable_tensors[group["name"]] = group["params"][0]
+            elif not copy_original_en:
+                group["params"][0] = nn.Parameter(extension_tensor.requires_grad_(True))
+                optimizable_tensors[group["name"]] = group["params"][0]
             else:
                 group["params"][0] = nn.Parameter(torch.cat((group["params"][0], extension_tensor), dim=0).requires_grad_(True))
                 optimizable_tensors[group["name"]] = group["params"][0]
 
         return optimizable_tensors
 
-    def densification_postfix(self, new_xyz, new_features_dc, new_features_rest, new_opacities, new_scaling, new_rotation):
+    def densification_postfix(self, new_xyz, new_features_dc, new_features_rest, new_opacities, new_scaling, new_rotation, SR_GS_en=False):
         d = {"xyz": new_xyz,
         "f_dc": new_features_dc,
         "f_rest": new_features_rest,
@@ -453,7 +456,11 @@ class GaussianModel:
         "scaling" : new_scaling,
         "rotation" : new_rotation}
 
-        optimizable_tensors = self.cat_tensors_to_optimizer(d)
+        if SR_GS_en:
+            optimizable_tensors = self.cat_tensors_to_optimizer(d, copy_original_en=False)
+        else:
+            optimizable_tensors = self.cat_tensors_to_optimizer(d)
+
         self._xyz = optimizable_tensors["xyz"]
         self._features_dc = optimizable_tensors["f_dc"]
         self._features_rest = optimizable_tensors["f_rest"]
@@ -545,3 +552,63 @@ class GaussianModel:
         self.xyz_gradient_accum_abs[update_filter] += torch.norm(viewspace_point_tensor.grad[update_filter,2:], dim=-1, keepdim=True)
         self.xyz_gradient_accum_abs_max[update_filter] = torch.max(self.xyz_gradient_accum_abs_max[update_filter], torch.norm(viewspace_point_tensor.grad[update_filter,2:], dim=-1, keepdim=True))
         self.denom[update_filter] += 1
+    
+    def super_resolving_gaussians(self, factor, rendering=False):
+        device = self._xyz.device
+        num_points = self._xyz.shape[0]
+        xyz_orig = self._xyz.clone().detach()
+        scalings_orig = self.get_scaling.clone().detach()
+        rotations_orig = self.get_rotation.clone().detach()
+        features_dc_orig = self._features_dc.clone().detach()
+        features_rest_orig = self._features_rest.clone().detach()
+        opacity_orig = self._opacity.clone().detach()
+        filter_3D_orig = self.filter_3D.clone().detach()
+
+        # --- New Gaussians ---
+        # Need modify: xyz, scaling
+        # Keep the same: rotation, features_dc, features_rest, opacity, filter_3D
+        new_xyz = xyz_orig.repeat(factor**3, 1)
+        # shift_value = 1.0 / factor
+        shift_value = 1.0
+
+        # Generate the shifts for x, y, and z axis
+        shift_range = np.linspace(-1 + shift_value, 1 - shift_value, factor)
+
+        # Create all combinations of shifts in 3D space
+        shift_combinations = torch.from_numpy(np.array([[x, y, z] for x in shift_range for y in shift_range for z in shift_range])).to(device)
+
+        # extended_points = np.einsum('ij,k->ijk', scalings_orig.cpu().numpy(), shift_combinations).reshape(-1, 3)
+
+        # Calculate the new points
+        # Initialize and empty list to store the extended points
+        extended_points_offset = []
+
+        # Multiply each original point by each shift combination
+        for shift_scale in shift_combinations:
+            try:
+                new_shift = scaling_orig * shift_scale
+            except:
+                new_shift = scalings_orig.detach().cpu().numpy() * shift_scale
+            extended_points_offset.append(new_shift)
+
+        # Convert the list of arrays to a single numpy array
+        extended_points_offset = torch.vstack(extended_points_offset)
+        new_xyz += extended_points_offset
+        new_rotation = rotations_orig.repeat(factor**3, 1)
+        new_features_dc = features_dc_orig.repeat(factor**3, 1, 1)
+        new_features_rest = features_rest_orig.repeat(factor**3, 1, 1)
+        new_opacities = opacity_orig.repeat(factor**3, 1)
+        scale_new = torch.log(scalings_orig / 2)
+        new_scaling = scale_new.repeat(factor**3, 1)
+        print(" === Number of points before densification postfix ", self._xyz.shape[0])
+
+        if not rendering:
+            self.densification_postfix(new_xyz, new_features_dc, new_features_rest, new_opacities, new_scaling, new_rotation, SR_GS_en=True)
+        else:
+            self._xyz = new_xyz
+            self._rotation = new_rotation
+            self._features_dc = new_features_dc
+            self._features_rest = new_features_rest
+            self._opacity = new_opacities
+            self._scaling = new_scaling
+        print(" === Number of points after densification postfix ", self._xyz.shape[0])

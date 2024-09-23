@@ -5,7 +5,6 @@ import GPUtil
 from concurrent.futures import ThreadPoolExecutor
 import queue
 import time
-from pathlib import Path
 
 # scenes = ["bicycle", "bonsai", "counter", "flowers", "garden", "stump", "treehill", "kitchen", "room"]
 # factors = [4, 2, 2, 4, 4, 4, 4, 2, 2]
@@ -13,31 +12,26 @@ from pathlib import Path
 scenes = ["bicycle"]
 factors = [4]
 
-prune_ratio = os.environ["PRUNE_RATIO"] if "PRUNE_RATIO" in os.environ else 1.0
-min_opacity = os.environ["MIN_OPACITY"] if "MIN_OPACITY" in os.environ else 0.005
-
 excluded_gpus = set([])
 
-output_dir = f"mip-splatting-ouptut/load_DS_{int(factors[0])*4}"
-# output_dir = "mip-splatting-ouptut"
+output_dir = "benchmark_360v2_ours"
 
 dry_run = False
 
 jobs = list(zip(scenes, factors))
 
 def train_scene(gpu, scene, factor):
-    exp_dir = f"mip-splatting-multiresolution/load_DS_{int(factor)*4}/tune_min_opacity_{str(min_opacity)}/"
-    cmd = f"OMP_NUM_THREADS=4 CUDA_VISIBLE_DEVICES={gpu} python train.py -s /fs/nexus-projects/dyn3Dscene/Codes/data/{scene} -m {output_dir}/{scene} --eval -r {int(factors[0])} --port {6009+int(gpu)} --kernel_size 0.1 --output_folder {output_dir}/{exp_dir} --load_pretrain"
+    cmd = f"OMP_NUM_THREADS=4 CUDA_VISIBLE_DEVICES={gpu} python train.py -s /fs/nexus-projects/dyn3Dscene/Codes/data/{scene} -m {output_dir}/{scene} --eval -r {factor} --port {6009+int(gpu)} --kernel_size 0.1"
     print(cmd)
     if not dry_run:
         os.system(cmd)
 
-    cmd = f"OMP_NUM_THREADS=4 CUDA_VISIBLE_DEVICES={gpu} python render.py -m {output_dir}/{exp_dir}/{scene} -r 1 --data_device cpu --skip_train"
+    cmd = f"OMP_NUM_THREADS=4 CUDA_VISIBLE_DEVICES={gpu} python render.py -m {output_dir}/{scene} -r 1 --data_device cpu --skip_train"
     print(cmd)
     if not dry_run:
         os.system(cmd)
     
-    cmd = f"OMP_NUM_THREADS=4 CUDA_VISIBLE_DEVICES={gpu} python metrics.py -m {output_dir}/{exp_dir}/{scene} -g /fs/nexus-projects/dyn3Dscene/Codes/data/{scene}"
+    cmd = f"OMP_NUM_THREADS=4 CUDA_VISIBLE_DEVICES={gpu} python metrics.py -m {output_dir}/{scene} -g /fs/nexus-projects/dyn3Dscene/Codes/data/{scene}"
     print(cmd)
     if not dry_run:
         os.system(cmd)
@@ -86,4 +80,3 @@ def dispatch_jobs(jobs, executor):
 # Using ThreadPoolExecutor to manage the thread pool
 with ThreadPoolExecutor(max_workers=8) as executor:
     dispatch_jobs(jobs, executor)
-

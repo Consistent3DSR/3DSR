@@ -85,8 +85,14 @@ class Scene:
         else:
             self.gaussians.create_from_pcd(scene_info.point_cloud, self.cameras_extent)
 
-    def save(self, iteration):
-        point_cloud_path = os.path.join(self.model_path, "point_cloud/iteration_{}".format(iteration))
+    def save(self, iteration, SR=False, output_folder=None):
+        if SR:
+            point_cloud_path = os.path.join(output_folder, "point_cloud_SR/iteration_{}".format(iteration))            
+        else:
+            if output_folder:
+                point_cloud_path = os.path.join(output_folder, "point_cloud/".format(output_folder))
+            else:
+                point_cloud_path = os.path.join(self.model_path, "point_cloud/iteration_{}".format(iteration))
         self.gaussians.save_ply(os.path.join(point_cloud_path, "point_cloud.ply"))
 
     def getTrainCameras(self, scale=1.0):
