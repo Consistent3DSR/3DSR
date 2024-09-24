@@ -14,20 +14,21 @@ factors = [4]
 
 excluded_gpus = set([])
 
-output_dir = "benchmark_360v2_ours"
+output_dir = f"mip-splatting-outputs/input_DS_{int(factors[0])}"
 
 dry_run = False
 
 jobs = list(zip(scenes, factors))
 
 def train_scene(gpu, scene, factor):
-    cmd = f"OMP_NUM_THREADS=4 CUDA_VISIBLE_DEVICES={gpu} python train.py -s /fs/nexus-projects/dyn3Dscene/Codes/data/{scene} -m {output_dir}/{scene} --eval -r {factor} --port {6009+int(gpu)} --kernel_size 0.1"
+    cmd = f"OMP_NUM_THREADS=4 CUDA_VISIBLE_DEVICES={gpu} python train.py -s /fs/nexus-projects/dyn3Dscene/Codes/data/{scene} -m {output_dir}/{scene} --eval -r {factor} --port {6009+int(gpu)} --kernel_size 0.1 --output_folder {output_dir}/{scene}"
     print(cmd)
     if not dry_run:
         os.system(cmd)
 
+    # cmd = f"OMP_NUM_THREADS=4 CUDA_VISIBLE_DEVICES={gpu} python render.py -m {output_dir}/{scene} -r 4 --data_device cpu --skip_train"
     cmd = f"OMP_NUM_THREADS=4 CUDA_VISIBLE_DEVICES={gpu} python render.py -m {output_dir}/{scene} -r 1 --data_device cpu --skip_train"
-    print(cmd)
+    print(cmd)    
     if not dry_run:
         os.system(cmd)
     

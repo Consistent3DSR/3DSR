@@ -68,13 +68,14 @@ def evaluate(model_paths, eval_both_dataset, gt_folder_parent=None):
         
         for dir in iter_dirs:
             method_dir = Path(scene_dir) / dir
-            test_dir = Path(scene_dir)
+            test_dir = Path(method_dir)
 
             for DS_folder in os.listdir(method_dir):
                 print("Folder:", DS_folder)
                 ds_scale = int(DS_folder.split("_")[-1])
                 full_dict[scene_dir][DS_folder] = {}
                 per_view_dict[scene_dir][DS_folder] = {}
+                full_dict_polytopeonly[scene_dir][DS_folder] = {}
                 per_view_dict_polytopeonly[scene_dir][DS_folder] = {}
 
                 for dataset_name in eval_dataset:
@@ -105,7 +106,7 @@ def evaluate(model_paths, eval_both_dataset, gt_folder_parent=None):
                             gt_folder = os.path.join(gt_folder_parent, f"images")
                         else:
                             gt_folder = os.path.join(gt_folder_parent, f"images_{ds_scale}")
-
+                        
                         gt_files = sorted(os.listdir(gt_folder))
                         all_indices = np.arange(len(gt_files))
                         train_indices = all_indices % llffhold != 0
@@ -120,9 +121,11 @@ def evaluate(model_paths, eval_both_dataset, gt_folder_parent=None):
                     else:
                         gt_dir = DS_dir / f"gt_{dataset_name}_{ds_scale}"
 
-                for idx in tqdm(range(len(renders)), desc="Metric evaluation progress"):
+                for idx in tqdm(range(len(file_names)), desc="Metric evaluation progress"):
                     if file_names[idx].endswith(".png"):
+                        print("filename: ", file_names[idx])
                         render = tf.to_tensor(Image.open(renders_dir / file_names[idx])).unsqueeze(0)[:, :3, :, :].cuda()
+                        
                         if gt_folder is not None:
                             gt_file_name = os.path.join(gt_dir, gt_files[gt_indices[idx]])
                             gt = tf.to_tensor(Image.open(gt_file_name)).unsqueeze(0)[:, :3, :, :].cuda()
@@ -136,8 +139,11 @@ def evaluate(model_paths, eval_both_dataset, gt_folder_parent=None):
                             gt = Resize(size = render.szie()[-2:])(gt)
                             ssims.append(ssim(render, gt))
                             psnrs.append(psnr(render, gt))
-                    
-                        lpipss.append(lpips_fn(render, gt).detach())
+                        try:
+                            lpipss.append(lpips_fn(render, gt).detach())
+                        except:
+                            torch.backends.cudnn.benchmark = True
+                            import pdb; pdb.set_trace()
                         musiqs.append(metric_musiq(render, gt).detach())
                         image_names.append(file_names[idx])
                     torch.cuda.empty_cache()
@@ -148,15 +154,15 @@ def evaluate(model_paths, eval_both_dataset, gt_folder_parent=None):
                 print("  MUSIQ: {:>12.7f}".format(torch.tensor(musiqs).mean(), ".5"))
                 print("")
 
-                full_dict[scene_dir][method].update({"SSIM": torch.tensor(ssims).mean().item(),
+                full_dict[scene_dir][DS_folder][dataset_name].update({"SSIM": torch.tensor(ssims).mean().item(),
                                                         "PSNR": torch.tensor(psnrs).mean().item(),
                                                         "LPIPS": torch.tensor(lpipss).mean().item(),
                                                         "MUSIQ": torch.tensor(musiqs).mean().item()})
-                per_view_dict[scene_dir][method].update({"SSIM": {name: ssim for ssim, name in zip(torch.tensor(ssims).tolist(), image_names)},
+                per_view_dict[scene_dir][DS_folder][dataset_name].update({"SSIM": {name: ssim for ssim, name in zip(torch.tensor(ssims).tolist(), image_names)},
                                                             "PSNR": {name: psnr for psnr, name in zip(torch.tensor(psnrs).tolist(), image_names)},
                                                             "LPIPS": {name: lp for lp, name in zip(torch.tensor(lpipss).tolist(), image_names)},
                                                             "MUSIQ": {name: musiq for musiq, name in zip(torch.tensor(musiqs).tolist(), image_names)}})
-
+                
             with open(scene_dir + "/results.json", 'w') as fp:
                 json.dump(full_dict[scene_dir], fp, indent=True)
             with open(scene_dir + "/per_view.json", 'w') as fp:
@@ -174,7 +180,7 @@ if __name__ == "__main__":
     parser.add_argument('--model_paths', '-m', required=True, nargs="+", type=str, default=[])
     parser.add_argument('--resolution', '-r', type=int, default=-1)
     parser.add_argument('--eval_both_dataset', '-e', action="store_true", default=False)
-    parser.add_argument('--gt_folder', '-g', type=str, default=None)
-    
+    parser.add_argument('--gt_folder', '-g', type=str, default=None)    
     args = parser.parse_args()
-    evaluate(args.model_paths, args.gt_folder)
+    
+    evaluate(args.model_paths, False, args.gt_folder)

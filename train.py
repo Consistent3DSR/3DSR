@@ -88,9 +88,9 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             gaussians._scaling = gaussians._scaling[valid_ids].clone().detach()
             gaussians._rotation = gaussians._rotation[valid_ids].clone().detach()
             gaussians._opacity = gaussians._opacity[valid_ids].clone().detach()
-        else:
-            scene = Scene(dataset, gaussians)
-    
+    else:
+        scene = Scene(dataset, gaussians)
+
     print("--- before super resolving points:", gaussians._xyz.shape[0])
     gaussians.training_setup(opt)
     if args.SR_GS:
@@ -362,7 +362,7 @@ if __name__ == "__main__":
     parser.add_argument("--musiq_train_en", action="store_true")
     parser.add_argument("--lpips_train_en", action="store_true")
     parser.add_argument("--prune_init_en", action="store_true")
-    parser.add_argument("seed", type=int, default=999)
+    parser.add_argument("--seed", type=int, default=999)
     
     args = parser.parse_args(sys.argv[1:])
     args.save_iterations.append(args.iterations)

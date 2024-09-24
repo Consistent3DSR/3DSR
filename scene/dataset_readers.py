@@ -97,6 +97,13 @@ def readColmapCameras(cam_extrinsics, cam_intrinsics, images_folder):
 
         image_path = os.path.join(images_folder, os.path.basename(extr.name))
         image_name = os.path.basename(image_path).split(".")[0]
+
+        if not os.path.exists(image_path):
+            dir_name = os.path.dirname(image_path)
+            filename = os.path.basename(image_path).split(".")[0] + '.png'
+            if os.path.exists(os.path.join(dir_name, filename)):
+                image_path = os.path.join(dir_name, filename)
+
         image = Image.open(image_path)
         # get rid of too many opened files
         image = copy.deepcopy(image)
@@ -131,7 +138,7 @@ def storePly(path, xyz, rgb):
     ply_data = PlyData([vertex_element])
     ply_data.write(path)
 
-def readColmapSceneInfo(path, images, eval, llffhold=8):
+def readColmapSceneInfo(path, images, eval, llffhold=8, resolution=1):
     try:
         cameras_extrinsic_file = os.path.join(path, "sparse/0", "images.bin")
         cameras_intrinsic_file = os.path.join(path, "sparse/0", "cameras.bin")
@@ -144,6 +151,9 @@ def readColmapSceneInfo(path, images, eval, llffhold=8):
         cam_intrinsics = read_intrinsics_text(cameras_intrinsic_file)
 
     reading_dir = "images" if images == None else images
+    if resolution > 1:
+        reading_dir = reading_dir + f"_{resolution}"
+        
     cam_infos_unsorted = readColmapCameras(cam_extrinsics=cam_extrinsics, cam_intrinsics=cam_intrinsics, images_folder=os.path.join(path, reading_dir))
     cam_infos = sorted(cam_infos_unsorted.copy(), key = lambda x : x.image_name)
 
@@ -170,12 +180,13 @@ def readColmapSceneInfo(path, images, eval, llffhold=8):
         pcd = fetchPly(ply_path)
     except:
         pcd = None
-
+            
     scene_info = SceneInfo(point_cloud=pcd,
                            train_cameras=train_cam_infos,
                            test_cameras=test_cam_infos,
                            nerf_normalization=nerf_normalization,
                            ply_path=ply_path)
+    
     return scene_info
 
 def readCamerasFromTransforms(path, transformsfile, white_background, extension=".png"):
