@@ -9,8 +9,8 @@ import time
 # scenes = ["bicycle", "bonsai", "counter", "flowers", "garden", "stump", "treehill", "kitchen", "room"]
 # factors = [4, 2, 2, 4, 4, 4, 4, 2, 2]
 
-scenes = ["bicycle", "bicycle", "bicycle", "bicycle"]
-factors = [32] #[1, 2, 4, 8] #[1, 2, 4, 8, 16, 32]
+scenes = ["bicycle"]
+factors = [8] #[2, 4, 8, 16, 32] #[1, 2, 4, 8] #[1, 2, 4, 8, 16, 32]
 
 excluded_gpus = set([])
 
@@ -21,25 +21,26 @@ jobs = list(zip(scenes, factors))
 def train_scene(gpu, scene, factor):
     # output_dir = f"outputs/original_data/load_from_DS_1_then_resize/input_DS_{int(factor)}"
     # output_dir = f"outputs/original_data/original_setting/input_DS_{int(factor)}"
-    output_dir = f"outputs/my_data/new_resize/original_setting/input_DS_{int(factor)}"
+    output_dir = f"/fs/nexus-projects/dyn3Dscene/Codes/mip-splatting/outputs/my_data/original_setting/input_DS_{int(factor)*4}"
+    exp_dir = f"/fs/nexus-projects/dyn3Dscene/Codes/mip-splatting/outputs/mip-splatting-multiresolution/load_DS_{int(factor)*4}/apply_edge_aware_loss"
     # cmd = f"OMP_NUM_THREADS=4 CUDA_VISIBLE_DEVICES={gpu} python visualize.py -m {output_dir}/{scene} -r {int(factors[0])} --data_device cpu --skip_train"
     # print(cmd)    
     # if not dry_run:
     #     os.system(cmd)
     
-    # cmd = f"OMP_NUM_THREADS=4 CUDA_VISIBLE_DEVICES={gpu} python train.py -s /fs/nexus-projects/dyn3Dscene/Codes/data/{scene}_orig -m {output_dir}/{scene} --eval -r {factor} --port {6009+int(gpu)} --kernel_size 0.1 --output_folder {output_dir}/{scene}"
-    cmd = f"OMP_NUM_THREADS=4 CUDA_VISIBLE_DEVICES={gpu} python train.py -s /fs/nexus-projects/dyn3Dscene/Codes/data/my_new_resize/{scene} -m {output_dir}/{scene} --eval -r {factor} --port {6009+int(gpu)} --kernel_size 0.1 --output_folder {output_dir}/{scene}"
-    print(cmd)
-    if not dry_run:
-        os.system(cmd)
-
-    # # cmd = f"OMP_NUM_THREADS=4 CUDA_VISIBLE_DEVICES={gpu} python render.py -m {output_dir}/{scene} -r 4 --data_device cpu --skip_train"
-    # cmd = f"OMP_NUM_THREADS=4 CUDA_VISIBLE_DEVICES={gpu} python render.py -m {output_dir}/{scene} -r 1 --data_device cpu --skip_train"
-    # print(cmd)    
+    # # cmd = f"OMP_NUM_THREADS=4 CUDA_VISIBLE_DEVICES={gpu} python train.py -s /fs/nexus-projects/dyn3Dscene/Codes/data/{scene}_orig -m {output_dir}/{scene} --eval -r {factor} --port {6009+int(gpu)} --kernel_size 0.1 --output_folder {output_dir}/{scene}"
+    # cmd = f"OMP_NUM_THREADS=4 CUDA_VISIBLE_DEVICES={gpu} python train.py -s /fs/nexus-projects/dyn3Dscene/Codes/data/my_new_resize/{scene} -m {output_dir}/{scene} --eval -r {factor} --port {6009+int(gpu)} --kernel_size 0.1 --output_folder {output_dir}/{scene}"
+    # print(cmd)
     # if not dry_run:
     #     os.system(cmd)
+
+    # cmd = f"OMP_NUM_THREADS=4 CUDA_VISIBLE_DEVICES={gpu} python render.py -m {output_dir}/{scene} -r 4 --data_device cpu --skip_train"
+    cmd = f"OMP_NUM_THREADS=4 CUDA_VISIBLE_DEVICES={gpu} python render.py -m {exp_dir}/{scene} -r 8 --data_device cpu --skip_train --video"
+    print(cmd)    
+    if not dry_run:
+        os.system(cmd)
     
-    # cmd = f"OMP_NUM_THREADS=4 CUDA_VISIBLE_DEVICES={gpu} python metrics.py -m {output_dir}/{scene} -g /fs/nexus-projects/dyn3Dscene/Codes/data/my_new_resize/{scene}"
+    # cmd = f"OMP_NUM_THREADS=4 CUDA_VISIBLE_DEVICES={gpu} python metrics.py -m {exp_dir}/{scene} -g /fs/nexus-projects/dyn3Dscene/Codes/data/my_resize/{scene}"
     # # cmd = f"OMP_NUM_THREADS=4 CUDA_VISIBLE_DEVICES={gpu} python metrics.py -m {output_dir}/{scene} -g /fs/nexus-projects/dyn3Dscene/Codes/data/{scene}"
     # print(cmd)
     # if not dry_run:
@@ -87,5 +88,16 @@ def dispatch_jobs(jobs, executor):
 
 
 # Using ThreadPoolExecutor to manage the thread pool
-with ThreadPoolExecutor(max_workers=8) as executor:
-    dispatch_jobs(jobs, executor)
+# with ThreadPoolExecutor(max_workers=8) as executor:
+#     dispatch_jobs(jobs, executor)
+
+reserved_gpus = set()
+import torch
+all_available_gpus = set(GPUtil.getAvailable(order="first", limit=10, maxMemory=0.1))
+available_gpus = list(all_available_gpus - reserved_gpus - excluded_gpus)
+
+gpu = available_gpus.pop(0)
+for i in range(len(scenes)):
+    scene = scenes[i]
+    factor = factors[i]
+    train_scene(gpu, scene, factor)

@@ -11,14 +11,17 @@ from pathlib import Path
 # factors = [4, 2, 2, 4, 4, 4, 4, 2, 2]
 
 scenes = ["bicycle"]
-factors = [4]
+factors = [2] #[2, 4, 8]
 
-prune_ratio = os.environ["PRUNE_RATIO"] if "PRUNE_RATIO" in os.environ else 1.0
-min_opacity = os.environ["MIN_OPACITY"] if "MIN_OPACITY" in os.environ else 0.005
+num_iters = int(os.environ["NUM_ITERS"])
+consecutive_timesteps = int(os.environ["CONSEC_TIMESTEPS"])
+num_inference_steps = int(os.environ["NUM_INFERENCE_STEPS"])
+# prune_ratio = os.environ["PRUNE_RATIO"] if "PRUNE_RATIO" in os.environ else 1.0
+# min_opacity = os.environ["MIN_OPACITY"] if "MIN_OPACITY" in os.environ else 0.005
 
 excluded_gpus = set([])
 
-output_dir = f"mip-splatting-ouptut/load_DS_{int(factors[0])*4}"
+
 # output_dir = "mip-splatting-ouptut"
 
 dry_run = False
@@ -26,21 +29,32 @@ dry_run = False
 jobs = list(zip(scenes, factors))
 
 def train_scene(gpu, scene, factor):
-    exp_dir = f"mip-splatting-multiresolution/load_DS_{int(factor)*4}/tune_min_opacity_{str(min_opacity)}/"
-    cmd = f"OMP_NUM_THREADS=4 CUDA_VISIBLE_DEVICES={gpu} python train.py -s /fs/nexus-projects/dyn3Dscene/Codes/data/{scene} -m {output_dir}/{scene} --eval -r {int(factors[0])} --port {6009+int(gpu)} --kernel_size 0.1 --output_folder {output_dir}/{exp_dir} --load_pretrain"
+    output_dir = f"/fs/nexus-projects/dyn3Dscene/Codes/mip-splatting/outputs/my_data/original_setting/input_DS_{int(factor)*4}"
+    # exp_dir = f"/fs/nexus-projects/dyn3Dscene/Codes/mip-splatting/outputs/mip-splatting-multiresolution/load_DS_{int(factor)*4}/train_SR_GT_DS_2_train_200_iters"
+    # exp_dir = f"/fs/nexus-projects/dyn3Dscene/Codes/mip-splatting/outputs/mip-splatting-multiresolution/load_DS_{int(factor)*4}/train_SD_SR_proposed_DS_{int(factor)}_train_{num_iters}_iters_consec_{consecutive_timesteps}_timesteps_total_{num_inference_steps}_steps_1110_debug"
+    exp_dir = f"/fs/nexus-projects/dyn3Dscene/Codes/mip-splatting/outputs/mip-splatting-multiresolution/load_DS_{int(factor)*4}/train_SD_SR_proposed_DS_{int(factor)}_NO_GS_w_img_encode_timesteps_total_{num_inference_steps}_steps_1110_debug_no_scaling"
+    # cmd = f"OMP_NUM_THREADS=4 CUDA_VISIBLE_DEVICES={gpu} python train.py -s /fs/nexus-projects/dyn3Dscene/Codes/data/my_resize/{scene} -m {output_dir}/{scene} --eval -r {int(factors[0])} --port {6009+int(gpu)} --kernel_size 0.1 --output_folder {exp_dir} --load_pretrain --train_tiny"
+    # cmd = f"OMP_NUM_THREADS=4 CUDA_VISIBLE_DEVICES={gpu} python train.py -s /fs/nexus-projects/dyn3Dscene/Codes/data/SR/SD/{scene} -m {output_dir}/{scene} --eval -r {int(factors[0])} --port {6009+int(gpu)} --kernel_size 0.1 --output_folder {exp_dir} --load_pretrain --train_tiny"
+    # cmd = f"OMP_NUM_THREADS=4 CUDA_VISIBLE_DEVICES={gpu} python train_proposed.py -s /fs/nexus-projects/dyn3Dscene/Codes/data/SR/SD/{scene} -m {output_dir}/{scene} --eval -r {int(factors[0])} --port {6009+int(gpu)} --kernel_size 0.1 --output_folder {exp_dir} --load_pretrain --train_tiny"
+    cmd = f"OMP_NUM_THREADS=4 CUDA_VISIBLE_DEVICES={gpu} python train_proposed_stable_sr.py -s /fs/nexus-projects/dyn3Dscene/Codes/data/SR/SD/{scene} -m {output_dir}/{scene} --eval -r {int(factors[0])} --port {6009+int(gpu)} --kernel_size 0.1 --output_folder {exp_dir} --load_pretrain --train_tiny"
     print(cmd)
     if not dry_run:
         os.system(cmd)
 
-    cmd = f"OMP_NUM_THREADS=4 CUDA_VISIBLE_DEVICES={gpu} python render.py -m {output_dir}/{exp_dir}/{scene} -r 1 --data_device cpu --skip_train"
-    print(cmd)
-    if not dry_run:
-        os.system(cmd)
+    # cmd = f"OMP_NUM_THREADS=4 CUDA_VISIBLE_DEVICES={gpu} python render.py -m {output_dir}/{exp_dir}/{scene} -r 1 --data_device cpu --skip_train"
     
-    cmd = f"OMP_NUM_THREADS=4 CUDA_VISIBLE_DEVICES={gpu} python metrics.py -m {output_dir}/{exp_dir}/{scene} -g /fs/nexus-projects/dyn3Dscene/Codes/data/{scene}"
-    print(cmd)
-    if not dry_run:
-        os.system(cmd)
+    # Render test data
+    # cmd = f"OMP_NUM_THREADS=4 CUDA_VISIBLE_DEVICES={gpu} python render.py -m {exp_dir}/{scene} -r 1 --data_device cpu --skip_train --train_tiny"
+    # Render training data
+    # cmd = f"OMP_NUM_THREADS=4 CUDA_VISIBLE_DEVICES={gpu} python render.py -m {exp_dir}/{scene} -r 1 --data_device cpu --skip_test --train_tiny"
+    # print(cmd)
+    # if not dry_run:
+    #     os.system(cmd)
+    
+    # cmd = f"OMP_NUM_THREADS=4 CUDA_VISIBLE_DEVICES={gpu} python metrics.py -m {output_dir}/{exp_dir}/{scene} -g /fs/nexus-projects/dyn3Dscene/Codes/data/my_resize/{scene}"
+    # print(cmd)
+    # if not dry_run:
+    #     os.system(cmd)
     return True
 
 

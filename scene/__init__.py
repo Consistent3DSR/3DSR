@@ -22,7 +22,7 @@ class Scene:
 
     gaussians : GaussianModel
 
-    def __init__(self, args : ModelParams, gaussians : GaussianModel, load_iteration=None, shuffle=True, resolution_scales=[1.0]):
+    def __init__(self, args : ModelParams, gaussians : GaussianModel, load_iteration=None, shuffle=True, resolution_scales=[1.0], train_tiny=False):
         """b
         :param path: Path to colmap scene main folder.
         """
@@ -38,9 +38,9 @@ class Scene:
             print("Loading trained model at iteration {}".format(self.loaded_iter))
 
         self.train_cameras = {}
-        self.test_cameras = {}        
+        self.test_cameras = {}
         if os.path.exists(os.path.join(args.source_path, "sparse")):
-            scene_info = sceneLoadTypeCallbacks["Colmap"](args.source_path, args.images, args.eval, resolution=args.resolution)
+            scene_info = sceneLoadTypeCallbacks["Colmap"](args.source_path, args.images, args.eval, resolution=args.resolution, train_tiny=train_tiny)
         elif os.path.exists(os.path.join(args.source_path, "transforms_train.json")):
             print("Found transforms_train.json file, assuming Blender data set!")
             scene_info = sceneLoadTypeCallbacks["Blender"](args.source_path, args.white_background, args.eval)
@@ -48,7 +48,9 @@ class Scene:
             print("Found metadata.json file, assuming multi scale Blender data set!")
             scene_info = sceneLoadTypeCallbacks["Multi-scale"](args.source_path, args.white_background, args.eval, args.load_allres)
         else:
-            assert False, "Could not recognize scene type!"        
+            assert False, "Could not recognize scene type!"       
+            
+        print("Loading Scene -------------------") 
         if not self.loaded_iter:
             with open(scene_info.ply_path, 'rb') as src_file, open(os.path.join(self.model_path, "input.ply") , 'wb') as dest_file:
                 dest_file.write(src_file.read())
@@ -67,13 +69,13 @@ class Scene:
             # random.shuffle(scene_info.test_cameras)  # Multi-res consistent random shuffling
 
         self.cameras_extent = scene_info.nerf_normalization["radius"]
-
+        
         for resolution_scale in resolution_scales:
             print("Loading Training Cameras")
             self.train_cameras[resolution_scale] = cameraList_from_camInfos(scene_info.train_cameras, resolution_scale, args)
             print("Loading Test Cameras")
             self.test_cameras[resolution_scale] = cameraList_from_camInfos(scene_info.test_cameras, resolution_scale, args)
-        
+
         if self.loaded_iter:
             self.gaussians.load_ply(os.path.join(self.model_path,
                                                            "point_cloud",
@@ -87,7 +89,7 @@ class Scene:
             point_cloud_path = os.path.join(output_folder, "point_cloud_SR/iteration_{}".format(iteration))            
         else:
             if output_folder:
-                point_cloud_path = os.path.join(output_folder, "point_cloud/".format(output_folder))
+                point_cloud_path = os.path.join(self.model_path, "point_cloud/{}".format(output_folder))
             else:
                 point_cloud_path = os.path.join(self.model_path, "point_cloud/iteration_{}".format(iteration))
         self.gaussians.save_ply(os.path.join(point_cloud_path, "point_cloud.ply"))

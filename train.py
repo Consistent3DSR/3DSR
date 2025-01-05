@@ -29,6 +29,7 @@ from tqdm import tqdm
 from utils.image_utils import psnr
 from argparse import ArgumentParser, Namespace
 from arguments import ModelParams, PipelineParams, OptimizationParams
+import torchvision
 try:
     # from torch.utils.tensorboard import SummaryWriter
     from tensorboardX import SummaryWriter
@@ -71,13 +72,13 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
         viewpoint_stack2 = None
     
     if args.load_pretrain:
-        scene = Scene(dataset, gaussians, load_iteration=30000, shuffle=False)
+        scene = Scene(dataset, gaussians, load_iteration=30000, shuffle=False, train_tiny=args.train_tiny)
         scene.model_path = args.output_folder
         dataset_name = os.path.basename(dataset.source_path)
         dataset.model_path = os.path.join(args.output_folder, dataset_name)
         tb_writer = prepare_output_and_logger(dataset)
         scene.model_path = dataset.model_path
-
+        
         if args.prune_init_en:
             num_points = scene.gaussians._xyz.shape[0]
             valid_ids = torch.randperm(num_points)[:int(num_points * prune_ratio+0.5)]
@@ -127,7 +128,10 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
 
     viewpoint_stack = None
     ema_loss_for_log = 0.0
-    progress_bar = tqdm(range(first_iter, opt.iterations), desc="Training progress")
+    try:
+        progress_bar = tqdm(range(first_iter, opt.iterations), desc="Training progress")
+    except:
+        import pdb; pdb.set_trace()
     first_iter += 1
 
     if args.lpips_train_en:
@@ -136,7 +140,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
         metric_musiq = pyiqa.create_metric("musiq").cuda(0)
     
     num_points = {}
-
+    
     for iteration in range(first_iter, opt.iterations + 1):        
         if network_gui.conn == None:
             network_gui.try_connect()
@@ -190,8 +194,33 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
         if dataset.resample_gt_image:
             gt_image = create_offset_gt(gt_image, subpixel_offset)
 
-        Ll1 = l1_loss(image, gt_image)
+        # edge_aware_loss_en = False
+        if args.edge_aware_loss_en:
+            dx = torch.abs(image[:, :,1:] - image[:,:,:-1])
+            dy = torch.abs(image[:,1:,:] - image[:,:-1,:])
+            dx_norm = dx / dx.max()
+            dy_norm = dy / dy.max()
+                        
+            # out_x = Image.fromarray((dx_norm.cpu().detach().permute(1,2,0).numpy() * 255).astype(np.uint8))
+            # out_y = Image.fromarray((dy_norm.cpu().detach().permute(1,2,0).numpy() * 255).astype(np.uint8))
+            # out_x.save("dx.png")
+            # out_y.save("dy.png")
+            dx2 = torch.zeros_like(image)
+            dy2 = torch.zeros_like(image)
+            dx2[:,:,1:] = dx_norm
+            dy2[:,1:,:] = dy_norm
+            mix = dx2 + dy2
+            wt = torch.exp(mix)
+            L1_loss = torch.abs((image - gt_image))
+            
+            Ll1 = (L1_loss * wt).mean()
+        else:
+            Ll1 = l1_loss(image, gt_image)
         loss = (1.0 - opt.lambda_dssim) * Ll1 + opt.lambda_dssim * (1.0 - ssim(image, gt_image))
+        
+        # Save GT image
+        # torchvision.utils.save_image(gt_image, os.path.join('gt.png'))
+        
         if args.musiq_train_en:
             musiq_scroe = metric_musiq(image)
             loss += 1 / musiq_scroe[0][0] * 5
@@ -217,8 +246,9 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             L1_2 = l1_loss(img_small, gt_img_small)
             loss += (1.0 - opt.lambda_dssim) * L1_2 + opt.lambda_dssim * (1.0 - ssim(img_small, gt_img_small))
         
+       
         loss.backward()
-
+        # import pdb; pdb.set_trace()
         iter_end.record()
 
         with torch.no_grad():
@@ -235,9 +265,12 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             if (iteration in saving_iterations):
                 print("\n[ITER {}] Saving Gaussians".format(iteration))
                 scene.save(iteration)
+            if (iteration == opt.iterations):
+                print("\n[ITER {}] Saving Gaussians".format(iteration))
+                scene.save(iteration)
             if iteration % 1000 == 0:
                 print("\n[ITER {}] Saving Gaussians".format(iteration))
-                scene.save(iteration, output_folder="iteration_31000")
+                scene.save(iteration, output_folder="iteration_29000")
 
             if not args.freeze_point:
                 # Densification
@@ -363,12 +396,14 @@ if __name__ == "__main__":
     parser.add_argument("--lpips_train_en", action="store_true")
     parser.add_argument("--prune_init_en", action="store_true")
     parser.add_argument("--seed", type=int, default=999)
+    parser.add_argument("--train_tiny", action="store_true")
+    parser.add_argument("--edge_aware_loss_en", action="store_true")
     
     args = parser.parse_args(sys.argv[1:])
     args.save_iterations.append(args.iterations)
     
     print("Optimizing " + args.model_path)
-
+    import pdb; pdb.set_trace()
     # Set up random seed
     torch.manual_seed(args.seed)
     random.seed(args.seed)

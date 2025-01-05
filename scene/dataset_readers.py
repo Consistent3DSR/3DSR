@@ -23,6 +23,7 @@ from plyfile import PlyData, PlyElement
 from utils.sh_utils import SH2RGB
 from scene.gaussian_model import BasicPointCloud
 import copy
+import pickle
 
 class CameraInfo(NamedTuple):
     uid: int
@@ -82,7 +83,7 @@ def readColmapCameras(cam_extrinsics, cam_intrinsics, images_folder):
         uid = intr.id
         R = np.transpose(qvec2rotmat(extr.qvec))
         T = np.array(extr.tvec)
-
+        # import pdb; pdb.set_trace()
         if intr.model=="SIMPLE_PINHOLE":
             focal_length_x = intr.params[0]
             FovY = focal2fov(focal_length_x, height)
@@ -96,7 +97,7 @@ def readColmapCameras(cam_extrinsics, cam_intrinsics, images_folder):
             assert False, "Colmap camera model not handled: only undistorted datasets (PINHOLE or SIMPLE_PINHOLE cameras) supported!"
 
         image_path = os.path.join(images_folder, os.path.basename(extr.name))
-        image_name = os.path.basename(image_path).split(".")[0]
+        image_name = os.path.basename(image_path).split(".")[0]        
 
         if not os.path.exists(image_path):
             dir_name = os.path.dirname(image_path)
@@ -104,13 +105,16 @@ def readColmapCameras(cam_extrinsics, cam_intrinsics, images_folder):
             if os.path.exists(os.path.join(dir_name, filename)):
                 image_path = os.path.join(dir_name, filename)
 
-        image = Image.open(image_path)
+        try:
+            image = Image.open(image_path)
+        except:            
+            import pdb; pdb.set_trace()
         # get rid of too many opened files
         image = copy.deepcopy(image)
         cam_info = CameraInfo(uid=uid, R=R, T=T, FovY=FovY, FovX=FovX, image=image,
                               image_path=image_path, image_name=image_name, width=width, height=height)
         cam_infos.append(cam_info)
-    sys.stdout.write('\n')
+    sys.stdout.write('\n')    
     return cam_infos
 
 def fetchPly(path):
@@ -138,7 +142,7 @@ def storePly(path, xyz, rgb):
     ply_data = PlyData([vertex_element])
     ply_data.write(path)
 
-def readColmapSceneInfo(path, images, eval, llffhold=8, resolution=1):
+def readColmapSceneInfo(path, images, eval, llffhold=8, resolution=1, train_tiny=False, cam_info_path=None):
     try:
         cameras_extrinsic_file = os.path.join(path, "sparse/0", "images.bin")
         cameras_intrinsic_file = os.path.join(path, "sparse/0", "cameras.bin")
@@ -149,12 +153,21 @@ def readColmapSceneInfo(path, images, eval, llffhold=8, resolution=1):
         cameras_intrinsic_file = os.path.join(path, "sparse/0", "cameras.txt")
         cam_extrinsics = read_extrinsics_text(cameras_extrinsic_file)
         cam_intrinsics = read_intrinsics_text(cameras_intrinsic_file)
-
+    
     reading_dir = "images" if images == None else images
+    # Jamie
     if resolution > 1:
         reading_dir = reading_dir + f"_{resolution}"
-        
-    cam_infos_unsorted = readColmapCameras(cam_extrinsics=cam_extrinsics, cam_intrinsics=cam_intrinsics, images_folder=os.path.join(path, reading_dir))
+
+    dataset_name = os.path.basename(path)
+    file_name = f"{dataset_name}_cam_infos_DS_{resolution}.json"
+    if os.path.exists(file_name):        
+        with open(file_name, 'rb') as f:
+            cam_infos_unsorted = pickle.load(f)
+    else:
+        cam_infos_unsorted = readColmapCameras(cam_extrinsics=cam_extrinsics, cam_intrinsics=cam_intrinsics, images_folder=os.path.join(path, reading_dir))
+        with open(file_name, 'wb') as f:
+            pickle.dump(cam_infos_unsorted, f)
     cam_infos = sorted(cam_infos_unsorted.copy(), key = lambda x : x.image_name)
 
     if eval:
@@ -180,7 +193,13 @@ def readColmapSceneInfo(path, images, eval, llffhold=8, resolution=1):
         pcd = fetchPly(ply_path)
     except:
         pcd = None
-            
+    
+    if train_tiny:
+        small_list = []
+        small_list.append(train_cam_infos[1])
+        small_list.append(train_cam_infos[3])
+        train_cam_infos = small_list
+    
     scene_info = SceneInfo(point_cloud=pcd,
                            train_cameras=train_cam_infos,
                            test_cameras=test_cam_infos,

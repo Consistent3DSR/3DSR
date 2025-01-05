@@ -123,7 +123,6 @@ def evaluate(model_paths, eval_both_dataset, gt_folder_parent=None):
 
                 for idx in tqdm(range(len(file_names)), desc="Metric evaluation progress"):
                     if file_names[idx].endswith(".png"):
-                        print("filename: ", file_names[idx])
                         render = tf.to_tensor(Image.open(renders_dir / file_names[idx])).unsqueeze(0)[:, :3, :, :].cuda()
                         
                         if gt_folder is not None:
@@ -133,6 +132,7 @@ def evaluate(model_paths, eval_both_dataset, gt_folder_parent=None):
                             gt = tf.to_tensor(Image.open(gt_dir / file_names[idx])).unsqueeze(0)[:, :3, :, :].cuda()
                         
                         try:
+                            # import pdb; pdb.set_trace()
                             ssims.append(ssim(render, gt))
                             psnrs.append(psnr(render, gt))
                         except:
