@@ -13,6 +13,8 @@ from argparse import ArgumentParser, Namespace
 import sys
 import os
 
+num_iters = int(os.environ["NUM_ITERS"])
+
 class GroupParams:
     pass
 
@@ -44,7 +46,7 @@ class ParamGroup:
                 setattr(group, arg[0], arg[1])
         return group
 
-class ModelParams(ParamGroup): 
+class ModelParams(ParamGroup):
     def __init__(self, parser, sentinel=False):
         self.sh_degree = 3
         self._source_path = ""
@@ -76,7 +78,7 @@ class PipelineParams(ParamGroup):
 
 class OptimizationParams(ParamGroup):
     def __init__(self, parser):
-        self.iterations = 30_000
+        self.iterations = num_iters #30_000
         self.position_lr_init = 0.00016
         self.position_lr_final = 0.0000016
         self.position_lr_delay_mult = 0.01
@@ -102,11 +104,14 @@ def get_combined_args(parser : ArgumentParser):
     try:
         cfgfilepath = os.path.join(args_cmdline.model_path, "cfg_args")
         print("Looking for config file in", cfgfilepath)
-        with open(cfgfilepath) as cfg_file:
-            print("Config file found: {}".format(cfgfilepath))
-            cfgfile_string = cfg_file.read()
+        try:
+            with open(cfgfilepath) as cfg_file:
+                print("Config file found: {}".format(cfgfilepath))            
+                cfgfile_string = cfg_file.read()
+        except:
+            import pdb; pdb.set_trace()
     except TypeError:
-        print("Config file not found at")
+        print("Config file not found at")        
         pass
     args_cfgfile = eval(cfgfile_string)
 
