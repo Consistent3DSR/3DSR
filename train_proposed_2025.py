@@ -585,9 +585,10 @@ def train_proposed_2025(dataset, op, pipe, testing_iterations, saving_iterations
                         cnt = 0
                         im_spliter_x_tilda = ImageSpliterTh(imgs, args.vqgantile_size, args.vqgantile_stride, sf=1)
                         im_spliter_old = ImageSpliterTh(im_lq_bs, args.vqgantile_size, args.vqgantile_stride, sf=1)
-                        for im_lq_pch_new, index_infos in im_spliter_x_tilda:                        
+                        # for im_lq_pch_new, index_infos in im_spliter_x_tilda:                        
+                        for im_lq_pch, index_infos in im_spliter_old:                        
                             print("Processing patch: ", cnt, "---")
-                            x0_tilda_latent = model.get_first_stage_encoding(model.encode_first_stage(im_lq_pch_new))  # move to latent space
+                            x0_tilda_latent = model.get_first_stage_encoding(model.encode_first_stage(im_lq_pch))  # move to latent space
                             # semantic_c = patch_info[cnt]['semantic_c']
                             # steps = int(999 / (args.ddpm_steps - 1) * (args.ddpm_steps - iteration + 1))
                             # t = repeat(torch.tensor([steps]), '1 -> b', b=im_lq_bs.size(0))
@@ -603,7 +604,7 @@ def train_proposed_2025(dataset, op, pipe, testing_iterations, saving_iterations
                                 x_T = patch_info[cnt]['x_T'][img_id].unsqueeze(0)
                                 x0_tilda = patch_info[cnt]['x0_head'][img_id].unsqueeze(0)
                                 x_T_1, x0_head = model.sample_canvas_one_iter(iteration=iteration, cond=semantic_c, struct_cond=init_latent, 
-                                                batch_size=im_lq_pch_new.size(0), timesteps=args.ddpm_steps, time_replace=args.ddpm_steps, 
+                                                batch_size=im_lq_pch.size(0), timesteps=args.ddpm_steps, time_replace=args.ddpm_steps, 
                                                 x_T=x_T, tile_size=int(args.input_size/8), tile_overlap=args.tile_overlap, 
                                                 batch_size_sample=args.n_samples, return_x0=True, x0_input=x0_tilda)
                                 # x_T_1, x0_head = model.sample_canvas_one_iter(iteration=iteration, cond=semantic_c, struct_cond=init_latent, 
@@ -611,7 +612,7 @@ def train_proposed_2025(dataset, op, pipe, testing_iterations, saving_iterations
                                 #                 x_T=x_T, tile_size=int(args.input_size/8), tile_overlap=args.tile_overlap, 
                                 #                 batch_size_sample=args.n_samples, return_x0=True, x0_input=x0_tilda_latent[img_id].unsqueeze(0))
                                 patch_info[cnt]['x_T'][img_id] = x_T_1
-                                out1 = visualize_image(x0_head, im_lq_pch_new[img_id].unsqueeze(0), out_dict, out_img_name=f'tmp_sanity/decoded_x0_proposed_img_{img_id}_iter_{3-iteration}_patch_{cnt}.png')
+                                out1 = visualize_image(x0_head, im_lq_pch[img_id].unsqueeze(0), out_dict, out_img_name=f'tmp_check_patch_mean/decoded_x0_proposed_img_{img_id}_iter_{3-iteration}_patch_{cnt}.png')
                                                             
                         
                                 
