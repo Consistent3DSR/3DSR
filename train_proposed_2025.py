@@ -218,6 +218,7 @@ def training_with_iters(in_dict, dataset, opt, pipe, testing_iterations, saving_
             if not os.path.exists(training_folder):
                 os.makedirs(training_folder)
             file_name = os.path.join(training_folder, viewpoint_cam.image_name + ".png")
+            import pdb; pdb.set_trace()
             torchvision.utils.save_image(image, os.path.join(file_name))
             
         loss.backward()
@@ -484,13 +485,16 @@ def train_proposed_2025(dataset, op, pipe, testing_iterations, saving_iterations
                     im_lq_bs = F.pad(im_lq_bs, pad=(0, pad_w, 0, pad_h), mode='reflect')
                 else:
                     flag_pad = False
-                    
+                
+                #############################################
                 # Prepare dictionary for each patch
+                #############################################
                 # for img_id in range(len(images_path)):
                 if im_lq_bs.shape[2] > args.vqgantile_size or im_lq_bs.shape[3] > args.vqgantile_size:
                     im_spliter = ImageSpliterTh(im_lq_bs, args.vqgantile_size, args.vqgantile_stride, sf=1)
                     cnt = 0                            
                     patch_info = []
+                    # For one image                    
                     for im_lq_pch, index_infos in im_spliter:
                         # Encode image to latent space
                         init_latent = model.get_first_stage_encoding(model.encode_first_stage(im_lq_pch))  # move to latent space
@@ -512,17 +516,23 @@ def train_proposed_2025(dataset, op, pipe, testing_iterations, saving_iterations
                         # visualize_image(init_latent, im_lq_pch, out_dict, out_img_name='out_test_0108.png')
                         # import pdb; pdb.set_trace()
                 cnt = 0
+                #############################################
                 # Loop by denoising steps
+                #############################################
                 for iteration in range(args.ddpm_steps-1, -1, -1):
                     print("************** ITERATION", 3-iteration, "**************")
                     if im_lq_bs.shape[2] > args.vqgantile_size or im_lq_bs.shape[3] > args.vqgantile_size:
-                        # Loop by denoised images
+                        #############################################
+                        # Start of loop for denoised images
+                        #############################################
                         for img_id in range(len(im_path_bs)):
                             cnt = 0
                             print(" ---------- Image: ", img_id, "---------")
                             # Split image to patches
                             im_spliter = ImageSpliterTh(im_lq_bs[img_id].unsqueeze(0), args.vqgantile_size, args.vqgantile_stride, sf=1)
-                            # Loop to process each patch in an image                            
+                            #############################################
+                            # Loop to process each patch in an image   
+                            #############################################                         
                             for im_lq_pch, index_infos in im_spliter:
                                 print("Processing patch: ", cnt, "---")
                                 semantic_c = patch_info[cnt]['semantic_c']
@@ -535,7 +545,7 @@ def train_proposed_2025(dataset, op, pipe, testing_iterations, saving_iterations
                                 # Update patch denoising dictionary
                                 # patch_info[cnt]['x_T'][img_id,:,:,:] = x_T_prev
                                 patch_info[cnt]['x0_head'][img_id,:,:,:] = x0_head
-                                out2 = visualize_image(x0_head, im_lq_pch, out_dict, out_img_name=f'tmp_sanity/decoded_x0_orig_img_{img_id}_iter_{3-iteration}_patch_{cnt}.png')
+                                out2 = visualize_image(x0_head, im_lq_pch, out_dict, out_img_name=f'0130/decoded_x0_orig_img_{img_id}_iter_{3-iteration}_patch_{cnt}.png')
                                 
                                 # Decode the latent space to image space
                                 vq_model = out_dict['vq_model']                                    
@@ -551,6 +561,7 @@ def train_proposed_2025(dataset, op, pipe, testing_iterations, saving_iterations
                                 cnt += 1
                             im_sr = im_spliter.gather()
                             im_sr = torch.clamp((im_sr+1.0)/2.0, min=0.0, max=1.0)
+                            
                             if upsample_scale > args.upscale:
                                 im_sr = F.interpolate(
                                             im_sr,
@@ -560,63 +571,75 @@ def train_proposed_2025(dataset, op, pipe, testing_iterations, saving_iterations
                                             )
                                 im_sr = torch.clamp(im_sr, min=0.0, max=1.0)
                             im_sr = im_sr.cpu().numpy().transpose(0,2,3,1)*255   # b x h x w x c
+                            
                             if flag_pad:
                                 im_sr = im_sr[:, :ori_h, :ori_w, ]
 
                             img_name = str(Path(im_path_bs[img_id]).name)
                             basename = os.path.splitext(os.path.basename(img_name))[0]
-                            outpath = str(Path(args.outdir)) + '/' + basename + f'_0109_use_x_head_iter_{3-int(iteration)}_img_id_{img_id}.png'
-                            Image.fromarray(im_sr[0, ].astype(np.uint8)).save(outpath)                            
+                            # outpath = str(Path(args.outdir)) + '/' + basename + f'_iter_{3-int(iteration)}_img_id_{img_id}.png'
+                            # Image.fromarray(im_sr[0, ].astype(np.uint8)).save(outpath)
+                        
+                        
+                        #############################################
+                        # End of loop for denoised images
+                        #############################################                
+                    print('************** Start encoding x0~ to latent space! **************')
+                    # import pdb; pdb.set_trace()
+                    # input_dict = training_with_iters(input_dict, dataset, op, pipe, testing_iterations, saving_iterations, 
+                    #                                 checkpoint_iterations, checkpoint, debug_from, args, dataset2, SR_iter=iteration, 
+                    #                                 SR_step=consecutive_timesteps)
+                    #############################################
+                    # Load upsampled image, and encode to latent space
+                    #############################################
+                    imgs = []
+                    for img_id in range(len(im_path_bs)):
+                        img_name = str(Path(im_path_bs[img_id]).name)
+                        basename = os.path.splitext(os.path.basename(img_name))[0]
+                        imgpath = str(Path(args.outdir)) + '/' + basename + f'_ddpm_iter_{3-int(iteration)}.png'
+                        cur_image = read_image(imgpath)
+                        imgs.append(cur_image)
+                    imgs = torch.cat(imgs, dim=0)
                     
-                    if iteration > 0:
-                        print('************** Start encoding x0~ to latent space! **************')
+                    #############################################
+                    # Encode image to latent space
+                    #############################################
+                    cnt = 0
+                    # im_spliter_x_tilda = ImageSpliterTh(imgs, args.vqgantile_size, args.vqgantile_stride, sf=1)
+                    im_spliter_old = ImageSpliterTh(im_lq_bs, args.vqgantile_size, args.vqgantile_stride, sf=1)
+                    # for im_lq_pch_new, index_infos in im_spliter_x_tilda:                        
+                    for im_lq_pch, index_infos in im_spliter_old:                   
+                        print("Processing patch: ", cnt, "---")
+                        x0_tilda_latent = model.get_first_stage_encoding(model.encode_first_stage(im_lq_pch))  # move to latent space
+                        # semantic_c = patch_info[cnt]['semantic_c']
+                        # steps = int(999 / (args.ddpm_steps - 1) * (args.ddpm_steps - iteration + 1))
+                        # t = repeat(torch.tensor([steps]), '1 -> b', b=im_lq_bs.size(0))
+                        # t = t.to(device).long()
+                        # x_T = model.q_sample_respace(x_start=init_latent, t=t, sqrt_alphas_cumprod=sqrt_alphas_cumprod, 
+                        #     sqrt_one_minus_alphas_cumprod=sqrt_one_minus_alphas_cumprod, noise=noise)
+                        # patch_info[cnt]['init_latent'] = init_latent
                         
-                        # Load upsampled image, and encode to latent space
-                        imgs = []
-                        for img_id in range(len(im_path_bs)):
-                            img_name = str(Path(im_path_bs[img_id]).name)
-                            basename = os.path.splitext(os.path.basename(img_name))[0]
-                            imgpath = str(Path(args.outdir)) + '/' + basename + f'_0109_use_x_head_iter_{3-int(iteration)}_img_id_{img_id}.png'
-                            cur_image = read_image(imgpath)
-                            imgs.append(cur_image)
-                        imgs = torch.cat(imgs, dim=0)
-                        
-                        # Encode image to latent space
-                        cnt = 0
-                        im_spliter_x_tilda = ImageSpliterTh(imgs, args.vqgantile_size, args.vqgantile_stride, sf=1)
-                        im_spliter_old = ImageSpliterTh(im_lq_bs, args.vqgantile_size, args.vqgantile_stride, sf=1)
-                        # for im_lq_pch_new, index_infos in im_spliter_x_tilda:                        
-                        for im_lq_pch, index_infos in im_spliter_old:                        
-                            print("Processing patch: ", cnt, "---")
-                            x0_tilda_latent = model.get_first_stage_encoding(model.encode_first_stage(im_lq_pch))  # move to latent space
-                            # semantic_c = patch_info[cnt]['semantic_c']
-                            # steps = int(999 / (args.ddpm_steps - 1) * (args.ddpm_steps - iteration + 1))
-                            # t = repeat(torch.tensor([steps]), '1 -> b', b=im_lq_bs.size(0))
-                            # t = t.to(device).long()
-                            # x_T = model.q_sample_respace(x_start=init_latent, t=t, sqrt_alphas_cumprod=sqrt_alphas_cumprod, 
-                            #     sqrt_one_minus_alphas_cumprod=sqrt_one_minus_alphas_cumprod, noise=noise)
-                            # patch_info[cnt]['init_latent'] = init_latent
-                            
-                            for img_id in range(im_lq_bs.size(0)):
-                                print("Image: ", img_id, "---")                               
-                                # x0_tilda_latent_1 = x0_tilda_latent[img_id, :, :, :].unsqueeze(0)
-                                init_latent = patch_info[cnt]['init_latent'][img_id].unsqueeze(0)
-                                x_T = patch_info[cnt]['x_T'][img_id].unsqueeze(0)
-                                x0_tilda = patch_info[cnt]['x0_head'][img_id].unsqueeze(0)
-                                x_T_1, x0_head = model.sample_canvas_one_iter(iteration=iteration, cond=semantic_c, struct_cond=init_latent, 
-                                                batch_size=im_lq_pch.size(0), timesteps=args.ddpm_steps, time_replace=args.ddpm_steps, 
-                                                x_T=x_T, tile_size=int(args.input_size/8), tile_overlap=args.tile_overlap, 
-                                                batch_size_sample=args.n_samples, return_x0=True, x0_input=x0_tilda)
-                                # x_T_1, x0_head = model.sample_canvas_one_iter(iteration=iteration, cond=semantic_c, struct_cond=init_latent, 
-                                #                 batch_size=im_lq_pch_new.size(0), timesteps=args.ddpm_steps, time_replace=args.ddpm_steps, 
-                                #                 x_T=x_T, tile_size=int(args.input_size/8), tile_overlap=args.tile_overlap, 
-                                #                 batch_size_sample=args.n_samples, return_x0=True, x0_input=x0_tilda_latent[img_id].unsqueeze(0))
+                        for img_id in range(im_lq_bs.size(0)):
+                            print("Image: ", img_id, "---")                               
+                            # x0_tilda_latent_1 = x0_tilda_latent[img_id, :, :, :].unsqueeze(0)
+                            init_latent = patch_info[cnt]['init_latent'][img_id].unsqueeze(0)
+                            x_T = patch_info[cnt]['x_T'][img_id].unsqueeze(0)
+                            x0_tilda = patch_info[cnt]['x0_head'][img_id].unsqueeze(0)
+                            # x_T_1, x0_head = model.sample_canvas_one_iter(iteration=iteration, cond=semantic_c, struct_cond=init_latent, 
+                            #                 batch_size=im_lq_pch.size(0), timesteps=args.ddpm_steps, time_replace=args.ddpm_steps, 
+                            #                 x_T=x_T, tile_size=int(args.input_size/8), tile_overlap=args.tile_overlap, 
+                            #                 batch_size_sample=args.n_samples, return_x0=True, x0_input=x0_tilda)
+                            x_T_1, x0_head = model.sample_canvas_one_iter(iteration=iteration, cond=semantic_c, struct_cond=init_latent, 
+                                            batch_size=im_lq_pch.size(0), timesteps=args.ddpm_steps, time_replace=args.ddpm_steps, 
+                                            x_T=x_T, tile_size=int(args.input_size/8), tile_overlap=args.tile_overlap, 
+                                            batch_size_sample=args.n_samples, return_x0=True, x0_input=x0_tilda_latent[img_id].unsqueeze(0))
+                            if iteration > 0:
                                 patch_info[cnt]['x_T'][img_id] = x_T_1
-                                out1 = visualize_image(x0_head, im_lq_pch[img_id].unsqueeze(0), out_dict, out_img_name=f'tmp_check_patch_mean/decoded_x0_proposed_img_{img_id}_iter_{3-iteration}_patch_{cnt}.png')
-                                                            
+                            out1 = visualize_image(x0_head, im_lq_pch[img_id].unsqueeze(0), out_dict, out_img_name=f'0130_tmp_ddpm_use_encoded_img/decoded_x0_proposed_img_{img_id}_iter_{3-iteration}_patch_{cnt}.png')
+                                                        
                         
                                 
-                            cnt += 1
+                        cnt += 1
                         # Update the image as x_T-1
                                 
                         # import pdb; pdb.set_trace()
