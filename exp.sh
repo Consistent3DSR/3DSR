@@ -24,7 +24,7 @@ OMP_NUM_THREADS=4 CUDA_VISIBLE_DEVICES=$gpu python train_proposed_2025.py \
     --config /fs/nexus-projects/dyn3Dscene/Codes/StableSR/configs/stableSRNew/v2-finetune_text_T_512.yaml \
    --ckpt /fs/nexus-projects/dyn3Dscene/Codes/StableSR/weights/stablesr_turbo.ckpt \
    --init-img ./inputs/test/ \
-   --outdir ./outputs_0206/ \
+   --outdir ./outputs_0207/ \
    --ddpm_steps 4 \
    --dec_w 0.5 \
    --seed 42 \
