@@ -122,48 +122,303 @@ def create_offset_gt(image, offset):
     image = torch.nn.functional.grid_sample(image[None], id_coords[None], align_corners=True, padding_mode="border")[0]
     return image
 
-def prepare_training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoint_iterations, checkpoint, debug_from, args, dataset2=None):    
-    tb_writer = prepare_output_and_logger(dataset)
-    gaussians = GaussianModel(dataset.sh_degree)    
+# def prepare_training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoint_iterations, checkpoint, debug_from, args, dataset2=None):    
+#     tb_writer = prepare_output_and_logger(dataset)
+#     gaussians = GaussianModel(dataset.sh_degree)    
      
+#     if args.load_pretrain:
+#         scene = Scene(dataset, gaussians, load_iteration=30000, shuffle=False, train_tiny=args.train_tiny)
+#         scene.model_path = args.output_folder
+#         dataset_name = os.path.basename(dataset.source_path)
+#         dataset.model_path = os.path.join(args.output_folder, dataset_name)
+#         tb_writer = prepare_output_and_logger(dataset)
+#         scene.model_path = dataset.model_path
+        
+#         if args.prune_init_en:
+#             num_points = scene.gaussians._xyz.shape[0]
+#             valid_ids = torch.randperm(num_points)[:int(num_points * prune_ratio+0.5)]
+#             # Prune points
+#             gaussians._xyz = gaussians._xyz[valid_ids].clone().detach()
+#             gaussians._features_dc = gaussians._features_dc[valid_ids].clone().detach()
+#             gaussians._features_rest = gaussians._features_rest[valid_ids].clone().detach()
+#             gaussians._scaling = gaussians._scaling[valid_ids].clone().detach()
+#             gaussians._rotation = gaussians._rotation[valid_ids].clone().detach()
+#             gaussians._opacity = gaussians._opacity[valid_ids].clone().detach()
+#     else:
+#         scene = Scene(dataset, gaussians)    
+        
+#     gaussians.training_setup(opt)
+#     if args.load_pretrain:
+#         gaussians.max_radii2D = torch.zeros((gaussians.get_xyz.shape[0]), dtype=torch.float32, device="cuda")
+#         gaussians.training_setup(opt)
+#         print("--- after loading pretrain points:", gaussians._xyz.shape[0])
+
+#     if checkpoint:
+#         (model_params, first_iter) = torch.load(checkpoint)
+#         gaussians.restore(model_params, opt)
+#         print(" ----- checkpoint loaded from", checkpoint)
+
+#     bg_color = [1, 1, 1] if dataset.white_background else [0, 0, 0]
+#     background = torch.tensor(bg_color, dtype=torch.float32, device="cuda")
+   
+#     trainCameras = scene.getTrainCameras().copy()
+#     testCameras = scene.getTestCameras().copy()
+#     # allCameras = trainCameras + testCameras
+    
+#     # highresolution index
+#     highresolution_index = []
+#     for index, camera in enumerate(trainCameras):
+#         if camera.image_width >= 800:
+#             highresolution_index.append(index)
+
+#     gaussians.compute_3D_filter(cameras=trainCameras)
+
+#     out_dict = {"scene": scene, "gaussians": gaussians, "tb_writer": tb_writer, "highresolution_index": highresolution_index}
+    
+#     return out_dict
+
+def get_homo_pose(R, T):
+    pose = np.zeros((4,4))
+    pose[:3,:3] = R
+    pose[:3, -1] = T
+    pose[-1,-1] = 1
+    return pose
+
+# def training_with_iters(in_dict, dataset, opt, pipe, testing_iterations, saving_iterations, checkpoint_iterations, checkpoint, debug_from, args, dataset2=None, SR_iter=0, SR_step=1):
+#     scene = in_dict["scene"]
+#     gaussians = in_dict["gaussians"]
+#     tb_writer = in_dict["tb_writer"]
+#     highresolution_index = in_dict["highresolution_index"]
+    
+#     iter_start = torch.cuda.Event(enable_timing = True)
+#     iter_end = torch.cuda.Event(enable_timing = True)
+    
+#     bg_color = [1, 1, 1] if dataset.white_background else [0, 0, 0]
+#     background = torch.tensor(bg_color, dtype=torch.float32, device="cuda")
+    
+#     trainCameras = scene.getTrainCameras().copy()
+
+#     ema_loss_for_log = 0.0
+#     first_iter = 0
+#     viewpoint_stack = None
+#     try:
+#         progress_bar = tqdm(range(first_iter, opt.iterations), desc="Training progress")
+#     except:
+#         import pdb; pdb.set_trace()
+    
+#     first_iter += 1
+    
+#     for iteration in range(first_iter, opt.iterations + 1):        
+#         if network_gui.conn == None:
+#             network_gui.try_connect()
+#         while network_gui.conn != None:
+#             try:
+#                 net_image_bytes = None
+#                 custom_cam, do_training, pipe.convert_SHs_python, pipe.compute_cov3D_python, keep_alive, scaling_modifer = network_gui.receive()
+#                 if custom_cam != None:
+#                     net_image = render(custom_cam, gaussians, pipe, background, scaling_modifer)["render"]
+#                     net_image_bytes = memoryview((torch.clamp(net_image, min=0, max=1.0) * 255).byte().permute(1, 2, 0).contiguous().cpu().numpy())
+#                 network_gui.send(net_image_bytes, dataset.source_path)
+#                 if do_training and ((iteration < int(opt.iterations)) or not keep_alive):
+#                     break
+#             except Exception as e:
+#                 network_gui.conn = None
+
+#         iter_start.record()
+
+#         gaussians.update_learning_rate(iteration)
+
+#         # Every 1000 its we increase the levels of SH up to a maximum degree
+#         if iteration % 1000 == 0:
+#             gaussians.oneupSHdegree()
+
+#         # Pick a random Camera
+#         if not viewpoint_stack:
+#             viewpoint_stack = scene.getTrainCameras().copy()
+#         # pop_id = randint(0, len(viewpoint_stack)-1)
+#         pop_id=0
+#         viewpoint_cam = viewpoint_stack.pop(pop_id)
+        
+#         # Pick a random high resolution camera
+#         if random.random() < 0.3 and dataset.sample_more_highres:
+#             viewpoint_cam = trainCameras[highresolution_index[randint(0, len(highresolution_index)-1)]]
+            
+#         # Render
+#         if (iteration - 1) == debug_from:
+#             pipe.debug = True
+
+#         #TODO ignore border pixels
+#         if dataset.ray_jitter:
+#             subpixel_offset = torch.rand((int(viewpoint_cam.image_height), int(viewpoint_cam.image_width), 2), dtype=torch.float32, device="cuda") - 0.5
+#             # subpixel_offset *= 0.0
+#         else:
+#             subpixel_offset = None
+#         render_pkg = render(viewpoint_cam, gaussians, pipe, background, kernel_size=dataset.kernel_size, subpixel_offset=subpixel_offset)
+#         image, viewspace_point_tensor, visibility_filter, radii = render_pkg["render"], render_pkg["viewspace_points"], render_pkg["visibility_filter"], render_pkg["radii"]
+
+#         # Loss
+#         gt_image = viewpoint_cam.original_image.cuda()
+#         # sample gt_image with subpixel offset
+#         if dataset.resample_gt_image:
+#             gt_image = create_offset_gt(gt_image, subpixel_offset)
+#         # import pdb; pdb.set_trace()
+#         Ll1 = l1_loss(image, gt_image)
+        
+#         loss = (1.0 - opt.lambda_dssim) * Ll1 + opt.lambda_dssim * (1.0 - ssim(image, gt_image))
+#         # print(viewpoint_cam.image_name, "Ll1:", Ll1.item(), "loss:", loss.item())
+#         # import pdb; pdb.set_trace()
+#         #############################################
+#         # Save rendered images as blending results
+#         #############################################
+#         # Only record the last few iterations
+#         if iteration >= opt.iterations - len(trainCameras) or iteration % 49 == 0 or iteration % 49 == 1: 
+#             # training_folder = os.path.join(args.output_folder, 'training_with_step',f"timesteps_{SR_iter * SR_step}_{(SR_iter + 1) * SR_step}", "GS_training_results")
+#             training_folder = os.path.join(args.outdir, 'train_results')
+#             if not os.path.exists(training_folder):
+#                 os.makedirs(training_folder)
+#             file_name = os.path.join(training_folder, viewpoint_cam.image_name + f"_step_{3-SR_iter}_iter_{iteration}.png")
+#             torchvision.utils.save_image(image, os.path.join(file_name))
+            
+#             if iteration >= opt.iterations - len(trainCameras):
+#                 file_name = os.path.join(training_folder, viewpoint_cam.image_name + f"_step_{3-SR_iter}.png")
+#                 print(file_name)
+#                 torchvision.utils.save_image(image, os.path.join(file_name))
+#             # import pdb; pdb.set_trace()
+#             # poses = []
+#             # num_interpolate_poses = 5
+#             # render_folder = os.path.join(args.outdir, 'render_results')
+#             # if not os.path.exists(render_folder):
+#             #     os.makedirs(render_folder)
+#             # # import pdb; pdb.set_trace()
+#             # cur_cam = Camera(colmap_id=viewpoint_cam.colmap_id, R=viewpoint_cam.R, T=viewpoint_cam.T, FoVx=viewpoint_cam.FoVx, FoVy=viewpoint_cam.FoVy, image=viewpoint_cam.original_image, gt_alpha_mask=None, image_name=viewpoint_cam.image_name, uid=viewpoint_cam.uid)
+#             # cur_cam = viewpoint_cam.copy()
+#             # for cam_id in range(len(trainCameras)):
+#             #     poses.append(get_homo_pose(trainCameras[cam_id].R, trainCameras[cam_id].T))
+#             # cam_poses = interpolate_camera_poses(poses[0], poses[1], num_interpolate_poses)
+#             # for cam_id in range(num_interpolate_poses):
+#             #     cur_cam.R = cam_poses[cam_id][:3,:3]
+#             #     cur_cam.T = cam_poses[cam_id][:3,-1]
+#             #     render_pkg = render(cur_cam, gaussians, pipe, background, kernel_size=dataset.kernel_size, subpixel_offset=subpixel_offset)
+#             #     image, viewspace_point_tensor, visibility_filter, radii = render_pkg["render"], render_pkg["viewspace_points"], render_pkg["visibility_filter"], render_pkg["radii"]
+#             #     # Save image                
+#             #     file_name = os.path.join(render_folder, cur_cam.image_name + f"_iter_{3-SR_iter}_interpolate_frame_{cam_id}.png")
+#             #     torchvision.utils.save_image(image, os.path.join(file_name))
+#             #     import pdb; pdb.set_trace()
+        
+#         loss.backward()
+#         iter_end.record()                
+            
+#         with torch.no_grad():
+#             # Progress bar
+#             ema_loss_for_log = 0.4 * loss.item() + 0.6 * ema_loss_for_log
+#             if iteration % 10 == 0:
+#                 progress_bar.set_postfix({"Loss": f"{ema_loss_for_log:.{7}f}"})
+#                 progress_bar.update(10)
+#             if iteration == opt.iterations:
+#                 progress_bar.close()
+
+#             # Log and save
+#             training_report(tb_writer, iteration, Ll1, loss, l1_loss, iter_start.elapsed_time(iter_end), testing_iterations, scene, render, (pipe, background, dataset.kernel_size))
+#             # if (iteration in saving_iterations):
+#             #     print("\n[ITER {}] Saving Gaussians".format(iteration))
+#             #     scene.save(iteration)
+#             if (iteration == opt.iterations):
+#                 print("\n[ITER {}] Saving Gaussians".format(iteration))
+#                 scene.save(iteration)
+#             if iteration % 1000 == 0:
+#                 print("\n[ITER {}] Saving Gaussians".format(iteration))
+#                 scene.save(iteration, output_folder="iteration_29000")
+
+#             if not args.freeze_point:
+#                 # Densification
+#                 if iteration < opt.densify_until_iter:
+#                     # Keep track of max radii in image-space for pruning
+#                     gaussians.max_radii2D[visibility_filter] = torch.max(gaussians.max_radii2D[visibility_filter], radii[visibility_filter])
+#                     gaussians.add_densification_stats(viewspace_point_tensor, visibility_filter)
+
+#                     if iteration > opt.densify_from_iter and iteration % opt.densification_interval == 0:
+#                         size_threshold = 20 if iteration > opt.opacity_reset_interval else None
+#                         # gaussians.densify_and_prune(opt.densify_grad_threshold, 0.005, scene.cameras_extent, size_threshold)
+#                         gaussians.densify_and_prune(opt.densify_grad_threshold, min_opacity, scene.cameras_extent, size_threshold)
+#                         gaussians.compute_3D_filter(cameras=trainCameras)
+
+#                     if iteration % opt.opacity_reset_interval == 0 or (dataset.white_background and iteration == opt.densify_from_iter):
+#                         gaussians.reset_opacity()
+
+#             if iteration % 100 == 0 and iteration > opt.densify_until_iter:
+#                 if iteration < opt.iterations - 100:
+#                     # don't update in the end of training
+#                     gaussians.compute_3D_filter(cameras=trainCameras)
+            
+#             # if iteration == opt.iterations:
+#             #     with open(os.path.join(args.output_folder, "num_points.json"), "w") as f:
+#             #         json.dump(num_points, f)
+        
+#             # Optimizer step
+#             if iteration < opt.iterations:
+#                 gaussians.optimizer.step()
+#                 gaussians.optimizer.zero_grad(set_to_none = True)
+
+#             if (iteration in checkpoint_iterations):
+#                 print("\n[ITER {}] Saving Checkpoint".format(iteration))
+#                 torch.save((gaussians.capture(), iteration), scene.model_path + "/chkpnt" + str(iteration) + ".pth")
+
+#     out_dict = {"scene": scene, "gaussians": gaussians, "tb_writer": tb_writer, "highresolution_index": highresolution_index}
+#     return out_dict
+
+     
+    
+def prepare_training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoint_iterations, checkpoint, debug_from, args, dataset2=None):
+    first_iter = 0
+    tb_writer = prepare_output_and_logger(dataset)
+    gaussians = GaussianModel(dataset.sh_degree)
+    
     if args.load_pretrain:
         scene = Scene(dataset, gaussians, load_iteration=30000, shuffle=False, train_tiny=args.train_tiny)
         scene.model_path = args.output_folder
         dataset_name = os.path.basename(dataset.source_path)
-        dataset.model_path = os.path.join(args.output_folder, dataset_name)
+        try:
+            dataset.model_path = os.path.join(args.output_folder, dataset_name)
+        except:
+            import pdb; pdb.set_trace()
         tb_writer = prepare_output_and_logger(dataset)
         scene.model_path = dataset.model_path
-        
-        if args.prune_init_en:
-            num_points = scene.gaussians._xyz.shape[0]
-            valid_ids = torch.randperm(num_points)[:int(num_points * prune_ratio+0.5)]
-            # Prune points
-            gaussians._xyz = gaussians._xyz[valid_ids].clone().detach()
-            gaussians._features_dc = gaussians._features_dc[valid_ids].clone().detach()
-            gaussians._features_rest = gaussians._features_rest[valid_ids].clone().detach()
-            gaussians._scaling = gaussians._scaling[valid_ids].clone().detach()
-            gaussians._rotation = gaussians._rotation[valid_ids].clone().detach()
-            gaussians._opacity = gaussians._opacity[valid_ids].clone().detach()
     else:
-        scene = Scene(dataset, gaussians)    
-        
-    gaussians.training_setup(opt)
+        scene = Scene(dataset, gaussians)
+    
     if args.load_pretrain:
         gaussians.max_radii2D = torch.zeros((gaussians.get_xyz.shape[0]), dtype=torch.float32, device="cuda")
         gaussians.training_setup(opt)
         print("--- after loading pretrain points:", gaussians._xyz.shape[0])
-
+    else:
+        gaussians.training_setup(opt)
+        
     if checkpoint:
         (model_params, first_iter) = torch.load(checkpoint)
         gaussians.restore(model_params, opt)
-        print(" ----- checkpoint loaded from", checkpoint)
 
     bg_color = [1, 1, 1] if dataset.white_background else [0, 0, 0]
     background = torch.tensor(bg_color, dtype=torch.float32, device="cuda")
-   
+    
+    out_dict = {"scene": scene, "gaussians": gaussians, "tb_writer": tb_writer}
+    return out_dict
+
+# def training_w_iters(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoint_iterations, checkpoint, debug_from):
+def training_with_iters(in_dict, dataset, opt, pipe, testing_iterations, saving_iterations, checkpoint_iterations, checkpoint, debug_from, args, dataset2=None, SR_iter=0, SR_step=1):    
+    scene = in_dict['scene']
+    gaussians = in_dict['gaussians']
+    tb_writer = in_dict['tb_writer']
+    
+    first_iter = 0    
+    bg_color = [1, 1, 1] if dataset.white_background else [0, 0, 0]
+    background = torch.tensor(bg_color, dtype=torch.float32, device="cuda")
+
+    iter_start = torch.cuda.Event(enable_timing = True)
+    iter_end = torch.cuda.Event(enable_timing = True)
+
     trainCameras = scene.getTrainCameras().copy()
     testCameras = scene.getTestCameras().copy()
-    # allCameras = trainCameras + testCameras
+    allCameras = trainCameras + testCameras
     
     # highresolution index
     highresolution_index = []
@@ -173,39 +428,9 @@ def prepare_training(dataset, opt, pipe, testing_iterations, saving_iterations, 
 
     gaussians.compute_3D_filter(cameras=trainCameras)
 
-    out_dict = {"scene": scene, "gaussians": gaussians, "tb_writer": tb_writer, "highresolution_index": highresolution_index}
-    
-    return out_dict
-
-def get_homo_pose(R, T):
-    pose = np.zeros((4,4))
-    pose[:3,:3] = R
-    pose[:3, -1] = T
-    pose[-1,-1] = 1
-    return pose
-
-def training_with_iters(in_dict, dataset, opt, pipe, testing_iterations, saving_iterations, checkpoint_iterations, checkpoint, debug_from, args, dataset2=None, SR_iter=0, SR_step=1):
-    scene = in_dict["scene"]
-    gaussians = in_dict["gaussians"]
-    tb_writer = in_dict["tb_writer"]
-    highresolution_index = in_dict["highresolution_index"]
-    
-    iter_start = torch.cuda.Event(enable_timing = True)
-    iter_end = torch.cuda.Event(enable_timing = True)
-    
-    bg_color = [1, 1, 1] if dataset.white_background else [0, 0, 0]
-    background = torch.tensor(bg_color, dtype=torch.float32, device="cuda")
-    
-    trainCameras = scene.getTrainCameras().copy()
-
-    ema_loss_for_log = 0.0
-    first_iter = 0
     viewpoint_stack = None
-    try:
-        progress_bar = tqdm(range(first_iter, opt.iterations), desc="Training progress")
-    except:
-        import pdb; pdb.set_trace()
-    
+    ema_loss_for_log = 0.0
+    progress_bar = tqdm(range(first_iter, opt.iterations), desc="Training progress")
     first_iter += 1
     
     for iteration in range(first_iter, opt.iterations + 1):        
@@ -235,8 +460,7 @@ def training_with_iters(in_dict, dataset, opt, pipe, testing_iterations, saving_
         # Pick a random Camera
         if not viewpoint_stack:
             viewpoint_stack = scene.getTrainCameras().copy()
-        pop_id = randint(0, len(viewpoint_stack)-1)
-        viewpoint_cam = viewpoint_stack.pop(pop_id)
+        viewpoint_cam = viewpoint_stack.pop(randint(0, len(viewpoint_stack)-1))
         
         # Pick a random high resolution camera
         if random.random() < 0.3 and dataset.sample_more_highres:
@@ -260,50 +484,31 @@ def training_with_iters(in_dict, dataset, opt, pipe, testing_iterations, saving_
         # sample gt_image with subpixel offset
         if dataset.resample_gt_image:
             gt_image = create_offset_gt(gt_image, subpixel_offset)
-        
+
         Ll1 = l1_loss(image, gt_image)
         loss = (1.0 - opt.lambda_dssim) * Ll1 + opt.lambda_dssim * (1.0 - ssim(image, gt_image))
         # import pdb; pdb.set_trace()
-        #############################################
-        # Save rendered images as blending results
-        #############################################
-        # Only record the last few iterations
-        if iteration > opt.iterations - len(trainCameras) or iteration % 49 == 0 or iteration % 49 == 1: 
+        if iteration > opt.iterations - len(trainCameras):
+            training_folder = os.path.join(args.output_folder, 'training_views')
+            if not os.path.exists(training_folder):
+                os.makedirs(training_folder)
+            file_name = os.path.join(training_folder, viewpoint_cam.image_name + ".png")
+            torchvision.utils.save_image(image, os.path.join(file_name))
+        
+        loss.backward()
+        # import pdb; pdb.set_trace()
+        iter_end.record()
+        
+        if iteration > opt.iterations - len(trainCameras):
             # training_folder = os.path.join(args.output_folder, 'training_with_step',f"timesteps_{SR_iter * SR_step}_{(SR_iter + 1) * SR_step}", "GS_training_results")
             training_folder = os.path.join(args.outdir, 'train_results')
             if not os.path.exists(training_folder):
                 os.makedirs(training_folder)
-            file_name = os.path.join(training_folder, viewpoint_cam.image_name + f"_step_{3-SR_iter}_iter_{iteration}.png")
-            torchvision.utils.save_image(image, os.path.join(file_name))
-            
-            if iteration > opt.iterations - len(trainCameras):
-                file_name = os.path.join(training_folder, viewpoint_cam.image_name + f"_step_{3-SR_iter}.png")
-                torchvision.utils.save_image(image, os.path.join(file_name))
-            # # import pdb; pdb.set_trace()
-            # poses = []
-            # num_interpolate_poses = 5
-            # render_folder = os.path.join(args.outdir, 'render_results')
-            # if not os.path.exists(render_folder):
-            #     os.makedirs(render_folder)
-            # # import pdb; pdb.set_trace()
-            # cur_cam = Camera(colmap_id=viewpoint_cam.colmap_id, R=viewpoint_cam.R, T=viewpoint_cam.T, FoVx=viewpoint_cam.FoVx, FoVy=viewpoint_cam.FoVy, image=viewpoint_cam.original_image, gt_alpha_mask=None, image_name=viewpoint_cam.image_name, uid=viewpoint_cam.uid)
-            # cur_cam = viewpoint_cam.copy()
-            # for cam_id in range(len(trainCameras)):
-            #     poses.append(get_homo_pose(trainCameras[cam_id].R, trainCameras[cam_id].T))
-            # cam_poses = interpolate_camera_poses(poses[0], poses[1], num_interpolate_poses)
-            # for cam_id in range(num_interpolate_poses):
-            #     cur_cam.R = cam_poses[cam_id][:3,:3]
-            #     cur_cam.T = cam_poses[cam_id][:3,-1]
-            #     render_pkg = render(cur_cam, gaussians, pipe, background, kernel_size=dataset.kernel_size, subpixel_offset=subpixel_offset)
-            #     image, viewspace_point_tensor, visibility_filter, radii = render_pkg["render"], render_pkg["viewspace_points"], render_pkg["visibility_filter"], render_pkg["radii"]
-            #     # Save image                
-            #     file_name = os.path.join(render_folder, cur_cam.image_name + f"_iter_{3-SR_iter}_interpolate_frame_{cam_id}.png")
-            #     torchvision.utils.save_image(image, os.path.join(file_name))
-            #     import pdb; pdb.set_trace()
-        
-        loss.backward()
-        iter_end.record()                
-            
+            # file_name = os.path.join(training_folder, viewpoint_cam.image_name + f"_step_{3-SR_iter}_iter_{iteration}.png")            
+            file_name = os.path.join(training_folder, viewpoint_cam.image_name + f"_step_{3-SR_iter}.png")            
+            print(file_name)
+            torchvision.utils.save_image(image, os.path.join(file_name))         
+                        
         with torch.no_grad():
             # Progress bar
             ema_loss_for_log = 0.4 * loss.item() + 0.6 * ema_loss_for_log
@@ -315,40 +520,28 @@ def training_with_iters(in_dict, dataset, opt, pipe, testing_iterations, saving_
 
             # Log and save
             training_report(tb_writer, iteration, Ll1, loss, l1_loss, iter_start.elapsed_time(iter_end), testing_iterations, scene, render, (pipe, background, dataset.kernel_size))
-            # if (iteration in saving_iterations):
-            #     print("\n[ITER {}] Saving Gaussians".format(iteration))
-            #     scene.save(iteration)
-            if (iteration == opt.iterations):
+            if (iteration in saving_iterations):
                 print("\n[ITER {}] Saving Gaussians".format(iteration))
                 scene.save(iteration)
-            if iteration % 1000 == 0:
-                print("\n[ITER {}] Saving Gaussians".format(iteration))
-                scene.save(iteration, output_folder="iteration_29000")
 
-            if not args.freeze_point:
-                # Densification
-                if iteration < opt.densify_until_iter:
-                    # Keep track of max radii in image-space for pruning
-                    gaussians.max_radii2D[visibility_filter] = torch.max(gaussians.max_radii2D[visibility_filter], radii[visibility_filter])
-                    gaussians.add_densification_stats(viewspace_point_tensor, visibility_filter)
+            # Densification
+            if iteration < opt.densify_until_iter:
+                # Keep track of max radii in image-space for pruning
+                gaussians.max_radii2D[visibility_filter] = torch.max(gaussians.max_radii2D[visibility_filter], radii[visibility_filter])
+                gaussians.add_densification_stats(viewspace_point_tensor, visibility_filter)
 
-                    if iteration > opt.densify_from_iter and iteration % opt.densification_interval == 0:
-                        size_threshold = 20 if iteration > opt.opacity_reset_interval else None
-                        # gaussians.densify_and_prune(opt.densify_grad_threshold, 0.005, scene.cameras_extent, size_threshold)
-                        gaussians.densify_and_prune(opt.densify_grad_threshold, min_opacity, scene.cameras_extent, size_threshold)
-                        gaussians.compute_3D_filter(cameras=trainCameras)
+                if iteration > opt.densify_from_iter and iteration % opt.densification_interval == 0:
+                    size_threshold = 20 if iteration > opt.opacity_reset_interval else None
+                    gaussians.densify_and_prune(opt.densify_grad_threshold, 0.005, scene.cameras_extent, size_threshold)
+                    gaussians.compute_3D_filter(cameras=trainCameras)
 
-                    if iteration % opt.opacity_reset_interval == 0 or (dataset.white_background and iteration == opt.densify_from_iter):
-                        gaussians.reset_opacity()
+                if iteration % opt.opacity_reset_interval == 0 or (dataset.white_background and iteration == opt.densify_from_iter):
+                    gaussians.reset_opacity()
 
             if iteration % 100 == 0 and iteration > opt.densify_until_iter:
                 if iteration < opt.iterations - 100:
                     # don't update in the end of training
                     gaussians.compute_3D_filter(cameras=trainCameras)
-            
-            # if iteration == opt.iterations:
-            #     with open(os.path.join(args.output_folder, "num_points.json"), "w") as f:
-            #         json.dump(num_points, f)
         
             # Optimizer step
             if iteration < opt.iterations:
@@ -358,8 +551,9 @@ def training_with_iters(in_dict, dataset, opt, pipe, testing_iterations, saving_
             if (iteration in checkpoint_iterations):
                 print("\n[ITER {}] Saving Checkpoint".format(iteration))
                 torch.save((gaussians.capture(), iteration), scene.model_path + "/chkpnt" + str(iteration) + ".pth")
-
+    
     out_dict = {"scene": scene, "gaussians": gaussians, "tb_writer": tb_writer, "highresolution_index": highresolution_index}
+    
     return out_dict
 
 def load_model_from_config(config, ckpt, verbose=False):
@@ -523,81 +717,81 @@ def train_proposed_2025(dataset, op, pipe, testing_iterations, saving_iterations
     #############################################
     input_dict = prepare_training(dataset, op, pipe, testing_iterations, saving_iterations, checkpoint_iterations, checkpoint, debug_from, args, dataset2)
     scene = input_dict["scene"]
-    trainCameras = scene.getTrainCameras().copy()
+    trainCameras = scene.getTrainCameras()
     
-    # import pdb; pdb.set_trace()
     #############################################
     # Prepare for SR method
     #############################################
     # with torch.no_grad():
-    with precision_scope("cuda"):
-        with model.ema_scope():
-            tic = time.time()
-            all_samples = list()
-            im_lq_bs = []
-            im_path_bs = []
-            seed_everything(args.seed)
-            for img_id in range(len(images_path)):
-                cur_image = read_image(images_path[img_id])
-                size_min = min(cur_image.size(-1), cur_image.size(-2))
-                upsample_scale = max(args.input_size/size_min, args.upscale) 
-                cur_image = F.interpolate(
-                            cur_image,
-                            size=(int(cur_image.size(-2)*upsample_scale),
-                                    int(cur_image.size(-1)*upsample_scale)),
-                            mode='bicubic',
-                            )
-                cur_image = cur_image.clamp(-1, 1)
-                im_lq_bs.append(cur_image) # 1 x c x h x w, [-1, 1]
-                im_path_bs.append(images_path[img_id]) # 1 x c x h x w, [-1, 1]
-            
-            im_lq_bs = torch.cat(im_lq_bs, dim=0)
-            ori_h, ori_w = im_lq_bs.shape[2:]
-            ref_patch=None
-            if not (ori_h % 32 == 0 and ori_w % 32 == 0):
-                flag_pad = True
-                pad_h = ((ori_h // 32) + 1) * 32 - ori_h
-                pad_w = ((ori_w // 32) + 1) * 32 - ori_w
-                im_lq_bs = F.pad(im_lq_bs, pad=(0, pad_w, 0, pad_h), mode='reflect')
-            else:
-                flag_pad = False
-            
-            #############################################
-            # Prepare dictionary for each patch
-            #############################################
-            # for img_id in range(len(images_path)):
-            if im_lq_bs.shape[2] > args.vqgantile_size or im_lq_bs.shape[3] > args.vqgantile_size:
-                im_spliter = ImageSpliterTh(im_lq_bs, args.vqgantile_size, args.vqgantile_stride, sf=1)
-                cnt = 0                            
-                patch_info = []
-                # For one image                    
-                for im_lq_pch, index_infos in im_spliter:
-                    # Encode image to latent space
-                    init_latent = model.get_first_stage_encoding(model.encode_first_stage(im_lq_pch))  # move to latent space
-                    text_init = ['']*args.n_samples
-                    semantic_c = model.cond_stage_model(text_init)
-                    noise = torch.randn_like(init_latent)
-                    # If you would like to start from the intermediate steps, you can add noise to LR to the specific steps.
-                    t = repeat(torch.tensor([999]), '1 -> b', b=im_lq_bs.size(0))
-                    t = t.to(device).long()
-                    
-                    # Apply the noise to the latent space (sqrt(alpha) * z + sqrt(1-alpha) * x) to create x_T
-                    x_T = model.q_sample_respace(x_start=init_latent, t=t, sqrt_alphas_cumprod=sqrt_alphas_cumprod, 
-                            sqrt_one_minus_alphas_cumprod=sqrt_one_minus_alphas_cumprod, noise=noise)
-                    
-                    patch_dict = {"init_latent": init_latent, "semantic_c": semantic_c, "x_T": x_T, "x0_head": x_T}
-                    patch_info.append(patch_dict)
-                    print('creating patch info', cnt)
-                    cnt += 1 
-                    # visualize_image(init_latent, im_lq_pch, out_dict, out_img_name='out_test_0108.png')
-                    # import pdb; pdb.set_trace()
-            cnt = 0
-            #############################################
-            # Loop by denoising steps
-            #############################################
-            for iteration in range(args.ddpm_steps-1, -1, -1):
-                print("************** ITERATION", 3-iteration, "**************")
-                with torch.no_grad():
+    
+    with model.ema_scope():
+        tic = time.time()
+        all_samples = list()
+        im_lq_bs = []
+        im_path_bs = []
+        seed_everything(args.seed)
+        for img_id in range(len(images_path)):
+            cur_image = read_image(images_path[img_id])
+            size_min = min(cur_image.size(-1), cur_image.size(-2))
+            upsample_scale = max(args.input_size/size_min, args.upscale) 
+            cur_image = F.interpolate(
+                        cur_image,
+                        size=(int(cur_image.size(-2)*upsample_scale),
+                                int(cur_image.size(-1)*upsample_scale)),
+                        mode='bicubic',
+                        )                
+            cur_image = cur_image.clamp(-1, 1)
+            im_lq_bs.append(cur_image) # 1 x c x h x w, [-1, 1]
+            im_path_bs.append(images_path[img_id]) # 1 x c x h x w, [-1, 1]
+        
+        im_lq_bs = torch.cat(im_lq_bs, dim=0)
+        ori_h, ori_w = im_lq_bs.shape[2:]
+        ref_patch=None
+        if not (ori_h % 32 == 0 and ori_w % 32 == 0):
+            flag_pad = True
+            pad_h = ((ori_h // 32) + 1) * 32 - ori_h
+            pad_w = ((ori_w // 32) + 1) * 32 - ori_w
+            im_lq_bs = F.pad(im_lq_bs, pad=(0, pad_w, 0, pad_h), mode='reflect')
+        else:
+            flag_pad = False
+                
+        #############################################
+        # Prepare dictionary for each patch
+        #############################################
+        # for img_id in range(len(images_path)):        
+        if im_lq_bs.shape[2] > args.vqgantile_size or im_lq_bs.shape[3] > args.vqgantile_size:
+            im_spliter = ImageSpliterTh(im_lq_bs, args.vqgantile_size, args.vqgantile_stride, sf=1)
+            cnt = 0                            
+            patch_info = []
+            # For one image                    
+            for im_lq_pch, index_infos in im_spliter:
+                # Encode image to latent space
+                init_latent = model.get_first_stage_encoding(model.encode_first_stage(im_lq_pch))  # move to latent space
+                text_init = ['']*args.n_samples
+                semantic_c = model.cond_stage_model(text_init)
+                noise = torch.randn_like(init_latent)
+                # If you would like to start from the intermediate steps, you can add noise to LR to the specific steps.
+                t = repeat(torch.tensor([999]), '1 -> b', b=im_lq_bs.size(0))
+                t = t.to(device).long()
+                
+                # Apply the noise to the latent space (sqrt(alpha) * z + sqrt(1-alpha) * x) to create x_T
+                x_T = model.q_sample_respace(x_start=init_latent, t=t, sqrt_alphas_cumprod=sqrt_alphas_cumprod, 
+                        sqrt_one_minus_alphas_cumprod=sqrt_one_minus_alphas_cumprod, noise=noise)
+                
+                patch_dict = {"init_latent": init_latent, "semantic_c": semantic_c, "x_T": x_T, "x0_head": x_T}
+                patch_info.append(patch_dict)
+                print('creating patch info', cnt)
+                cnt += 1 
+                # visualize_image(init_latent, im_lq_pch, out_dict, out_img_name='out_test_0108.png')
+                # import pdb; pdb.set_trace()
+        cnt = 0
+        #############################################
+        # Loop by denoising steps
+        #############################################
+        for iteration in range(args.ddpm_steps-1, -1, -1):
+            print("************** ITERATION", 3-iteration, "**************")
+            with torch.no_grad():
+                with precision_scope("cuda"):
                     if im_lq_bs.shape[2] > args.vqgantile_size or im_lq_bs.shape[3] > args.vqgantile_size:
                         #############################################
                         # Start of loop for denoised images
@@ -622,8 +816,8 @@ def train_proposed_2025(dataset, op, pipe, testing_iterations, saving_iterations
                                                                                 batch_size_sample=args.n_samples, return_x0=True)
                                 # Update patch denoising dictionary
                                 # patch_info[cnt]['x_T'][img_id,:,:,:] = x_T_prev
-                                patch_info[cnt]['x0_head'][img_id,:,:,:] = x0_head
-                                out2 = visualize_image(x0_head, im_lq_pch, out_dict, out_img_name=f'0130/decoded_x0_orig_img_{img_id}_iter_{3-iteration}_patch_{cnt}.png')
+                                # patch_info[cnt]['x0_head'][img_id,:,:,:] = x0_head
+                                # out2 = visualize_image(x0_head, im_lq_pch, out_dict, out_img_name=f'0130/decoded_x0_orig_img_{img_id}_iter_{3-iteration}_patch_{cnt}.png')
                                 
                                 # Decode the latent space to image space
                                 vq_model = out_dict['vq_model']                                    
@@ -634,7 +828,12 @@ def train_proposed_2025(dataset, op, pipe, testing_iterations, saving_iterations
                                     x_samples = adaptive_instance_normalization(x_samples, im_lq_pch)
                                 elif args.colorfix_type == 'wavelet':
                                     x_samples = wavelet_reconstruction(x_samples, im_lq_pch)
-                                    
+                                                                
+                                output_folder = '0222_sr_patch_results'
+                                if not os.path.exists(output_folder):
+                                    os.makedirs(output_folder)
+                                patch = torch.clamp((x_samples+1.0)/2.0, min=0.0, max=1.0)
+                                torchvision.utils.save_image(patch, os.path.join(output_folder, f'img_{img_id}_iter_{3-iteration}_patch_{cnt}.png'))
                                 im_spliter.update_gaussian(x_samples, index_infos)
                                 cnt += 1
                             im_sr = im_spliter.gather()
@@ -650,145 +849,118 @@ def train_proposed_2025(dataset, op, pipe, testing_iterations, saving_iterations
                                 im_sr = torch.clamp(im_sr, min=0.0, max=1.0)
                             
                             if flag_pad:
-                                im_sr = im_sr[:, :ori_h, :ori_w, ]
-                            
+                                im_sr = im_sr[:, :, :ori_h, :ori_w, ]
                             # sr_imgs.append(im_sr)
                             im_sr = im_sr.cpu().numpy().transpose(0,2,3,1)*255   # b x h x w x c
                             
                             img_name = str(Path(im_path_bs[img_id]).name)
                             basename = os.path.splitext(os.path.basename(img_name))[0]
-                            outpath = str(Path(args.outdir)) + '/' + basename + f'_iter_{3-int(iteration)}.png'
+                            outpath = str(Path(args.outdir)) + '/' + basename + f'_step_{3-int(iteration)}.png'
                             Image.fromarray(im_sr[0, ].astype(np.uint8)).save(outpath)
                     
-                    #############################################
-                    # End of loop for denoised images
-                    #############################################
-                # sr_imgs = torch.cat(sr_imgs)
-                print('************** Start encoding x0~ to latent space! **************')
+                #############################################
+                # End of loop for denoised images
+                #############################################
+            # sr_imgs = torch.cat(sr_imgs)
+            print('************** Start encoding x0~ to latent space! **************')
+            # import pdb; pdb.set_trace()
+            
+            
+            # #############################################
+            # # Update ground truth image in trainCameras  
+            # #############################################      
+            for img_id in range(len(trainCameras)):
+                # If you read from the saved image, you can use the following code
+                # file_name = os.path.join(training_folder, trainCameras[i].image_name + ".png")
+                # img_transfer = Image.open(file_name).convert("RGB")
+                img_name = str(Path(im_path_bs[img_id]).name)
+                basename = os.path.splitext(os.path.basename(img_name))[0]
+                # trainCameras[img_id].image_name == basename
+                assert(img_name.split('.')[0] == basename)
                 
+                img_path = str(Path(args.outdir)) + '/' + basename + f'_step_{3-int(iteration)}.png'                
+                # print('Update ground truth image in trainCameras :', img_path)
+                img_transfer = Image.open(img_path).convert("RGB")
+                # If you use the SD SR output x0_head image
+                # img_transfer = out_img[0][i]
+                width, height = img_transfer.size
+                loaded_image = PILtoTorch(img_transfer, (width, height)).cuda()
+                trainCameras[img_id].original_image = loaded_image.clone()
                 
-                
-                #############################################
-                # Update ground truth image in trainCameras  
-                #############################################      
-                for img_id in range(len(trainCameras)):
-                    # If you read from the saved image, you can use the following code
-                    # file_name = os.path.join(training_folder, trainCameras[i].image_name + ".png")
-                    # img_transfer = Image.open(file_name).convert("RGB")
-                    img_name = str(Path(im_path_bs[img_id]).name)
-                    basename = os.path.splitext(os.path.basename(img_name))[0]
-                    # trainCameras[img_id].image_name == basename
-                    assert(img_name.split('.')[0] == basename)
-                    
-                    img_path = str(Path(args.outdir)) + '/' + basename + f'_iter_{3-int(iteration)}.png'
-                    img_transfer = Image.open(img_path).convert("RGB")
-                    
-                    # If you use the SD SR output x0_head image
-                    # img_transfer = out_img[0][i]
-                    width, height = img_transfer.size
-                    loaded_image = PILtoTorch(img_transfer, (width, height)).cuda()
-                    # import pdb; pdb.set_trace()
-                    trainCameras[img_id].original_image = loaded_image.clone()                        
-                    # trainCameras[img_id].original_image = sr_imgs[img_id].clone()
-                #############################################
-                # Train GS
-                #############################################
-                input_dict = training_with_iters(input_dict, dataset, op, pipe, testing_iterations, saving_iterations,
-                                                checkpoint_iterations, checkpoint, debug_from, args, dataset2, SR_iter=iteration,
-                                                SR_step=consecutive_timesteps)
-                
-                #############################################
-                # Load upsampled image, and encode to latent space
-                #############################################
-                imgs = []
-                for img_id in range(len(im_path_bs)):
-                    img_name = str(Path(im_path_bs[img_id]).name)
-                    basename = os.path.splitext(os.path.basename(img_name))[0]
-                    # imgpath = str(Path(args.outdir)) + '/' + basename + f'_ddpm_iter_{3-int(iteration)}.png'
-                    training_folder = os.path.join(args.outdir, 'train_results')
-                    imgpath = os.path.join(training_folder, trainCameras[img_id].image_name + f"_step_{3-int(iteration)}.png")
-                    cur_image = read_image(imgpath)
-                    imgs.append(cur_image)
-                imgs = torch.cat(imgs, dim=0)
-                # torchvision.utils.save_image((imgs[0]+1)/2, 'tmp_debug/decoded_x0_proposed_img_0_iter_0.png')
+                # trainCameras[img_id].original_image = sr_imgs[img_id].clone()
+            # #############################################
+            # # Train GS
+            # #############################################
+            input_dict = training_with_iters(input_dict, dataset, op, pipe, testing_iterations, saving_iterations,
+                                            checkpoint_iterations, checkpoint, debug_from, args, dataset2, SR_iter=iteration,
+                                            SR_step=consecutive_timesteps)
+            
+            #############################################
+            # Load upsampled image, and encode to latent space
+            #############################################
+            imgs = []
+            for img_id in range(len(im_path_bs)):
+                img_name = str(Path(im_path_bs[img_id]).name)
+                basename = os.path.splitext(os.path.basename(img_name))[0]
+                # imgpath = str(Path(args.outdir)) + '/' + basename + f'_ddpm_iter_{3-int(iteration)}.png'
+                training_folder = os.path.join(args.outdir, 'train_results')
+                imgpath = os.path.join(training_folder, trainCameras[img_id].image_name + f"_step_{3-int(iteration)}.png")
+                # print('Load upsampled image and encode:', imgpath)
+                # imgpath = str(Path(args.outdir)) + '/' + basename + f'_step_{3-int(iteration)}.png'
                 # import pdb; pdb.set_trace()
+                cur_image = read_image(imgpath)
                 
-                #############################################
-                # Encode image and decode back for debugging
-                #############################################
-                # with torch.no_grad():
-                #     latent = model.get_first_stage_encoding(model.encode_first_stage(imgs[0].unsqueeze(0)))
-                #     _, enc_fea_lq = vq_model.encode(imgs[0].unsqueeze(0))       
-                #     x_decoded = vq_model.decode(latent * 1/model.scale_factor, enc_fea_lq)
-                #     x_samples = wavelet_reconstruction(x_decoded, imgs[0])
-                #     x_samples = torch.clamp((x_samples + 1.0) / 2.0, min=0.0, max=1.0)
-                #     torchvision.utils.save_image(x_samples, 'tmp_debug/decoded_x0_proposed_img_0_iter_0_encode_decode.png')
-                #     import pdb; pdb.set_trace()
-                
-                #############################################
-                # Encode image to latent space
-                #############################################
-                cnt = 0
-                # im_spliter_x_tilda = ImageSpliterTh(imgs, args.vqgantile_size, args.vqgantile_stride, sf=1)
+                # Add padding to loaded image
+                if not (ori_h % 32 == 0 and ori_w % 32 == 0):
+                    pad_h = ((ori_h // 32) + 1) * 32 - ori_h
+                    pad_w = ((ori_w // 32) + 1) * 32 - ori_w
+                    # im_lq_bs = F.pad(im_lq_bs, pad=(0, pad_w, 0, pad_h), mode='reflect')
+                    cur_image = F.pad(cur_image, pad=(0, pad_w, 0, pad_h), mode='reflect')
+                imgs.append(cur_image)
+                # import pdb; pdb.set_trace()
+            imgs = torch.cat(imgs, dim=0)
+            # torchvision.utils.save_image((imgs[0]+1)/2, 'tmp_debug/decoded_x0_proposed_img_0_iter_0.png')            
+            
+            #############################################
+            # Encode image and decode back for debugging
+            #############################################
+            # with torch.no_grad():
+            #     latent = model.get_first_stage_encoding(model.encode_first_stage(imgs[0].unsqueeze(0)))
+            #     _, enc_fea_lq = vq_model.encode(imgs[0].unsqueeze(0))       
+            #     x_decoded = vq_model.decode(latent * 1/model.scale_factor, enc_fea_lq)
+            #     x_samples = wavelet_reconstruction(x_decoded, imgs[0])
+            #     x_samples = torch.clamp((x_samples + 1.0) / 2.0, min=0.0, max=1.0)
+            #     torchvision.utils.save_image(x_samples, 'tmp_debug/decoded_x0_proposed_img_0_iter_0_encode_decode.png')
+            #     import pdb; pdb.set_trace()
+            
+            #############################################
+            # Encode image to latent space
+            #############################################
+            cnt = 0
+            with precision_scope("cuda"):
                 im_spliter_x_tilda = ImageSpliterTh(imgs, args.vqgantile_size, args.vqgantile_stride, sf=1)
+                # visualize_folder = '0222_patch_decoded_w_padding'
+                # if not os.path.exists(visualize_folder):
+                #     os.makedirs(visualize_folder)
                 with torch.no_grad():
                     for im_lq_pch, index_infos in im_spliter_x_tilda:                        
-                        torchvision.utils.save_image((im_lq_pch+1)/2, 'tmp_debug/decoded_x0_proposed_img_0_patch_0_iter_0.png')
+                        # torchvision.utils.save_image((im_lq_pch+1)/2, 'tmp_debug/decoded_x0_proposed_img_0_patch_0_iter_0.png')
                         x0_tilda_latent = model.get_first_stage_encoding(model.encode_first_stage(im_lq_pch))  # move to latent space
                         _, enc_fea_lq = vq_model.encode(im_lq_pch)
                         for img_id in range(im_lq_bs.size(0)):
-                            patch_info[cnt]['x_T'][img_id] = x0_tilda_latent[img_id]
                             x0_tilda_latent_id = x0_tilda_latent[img_id, :, :, :].unsqueeze(0)
+                            patch_info[cnt]['x_T'][img_id] = x0_tilda_latent[img_id]
+                            init_latent = patch_info[cnt]['init_latent'][img_id].unsqueeze(0)
+                            semantic_c = patch_info[cnt]['semantic_c']
                             x_T_1, x0_head = model.sample_canvas_one_iter(iteration=iteration, cond=semantic_c, struct_cond=init_latent, 
                                             batch_size=im_lq_pch.size(0), timesteps=args.ddpm_steps, time_replace=args.ddpm_steps, 
                                             x_T=x_T, tile_size=int(args.input_size/8), tile_overlap=args.tile_overlap, 
                                             batch_size_sample=args.n_samples, return_x0=True, x0_input=x0_tilda_latent_id)
-                            patch_info[cnt]['x_T'][img_id] = x_T_1
-                            out1 = visualize_image(x0_head, im_lq_pch[img_id].unsqueeze(0), out_dict, out_img_name=f'tmp_debug/decoded_x0_proposed_img_{img_id}_iter_{3-iteration}_patch_{cnt}_new.png')
-                            # import pdb; pdb.set_trace()
+                            patch_info[cnt]['x_T'][img_id] = x_T_1                                                        
+                            # out1 = visualize_image(x0_tilda_latent_id, im_lq_pch[img_id].unsqueeze(0), out_dict, out_img_name=os.path.join(visualize_folder, f'img_{img_id}_iter_{3-iteration}_patch_{cnt}_decoded.png'))
                         cnt += 1
-                        # x_decoded = vq_model.decode(x0_tilda_latent * 1/model.scale_factor, enc_fea_lq)
-                        # x_samples = wavelet_reconstruction(x_decoded, im_lq_pch)                        
-                        # x_samples = torch.clamp((x_samples + 1.0) / 2.0, min=0.0, max=1.0)
-                        # torchvision.utils.save_image(x_samples, 'tmp_debug/decoded_x0_proposed_img_0_patch_0_iter_0_encode_decode.png')
-                """
-                im_spliter_old = ImageSpliterTh(im_lq_bs, args.vqgantile_size, args.vqgantile_stride, sf=1)
-                # for im_lq_pch_new, index_infos in im_spliter_x_tilda:  
-                with torch.no_grad():
-                    for im_lq_pch, index_infos in im_spliter_old:                   
-                        print("Processing patch: ", cnt, "---")
-                        x0_tilda_latent = model.get_first_stage_encoding(model.encode_first_stage(im_lq_pch))  # move to latent space
-                        # semantic_c = patch_info[cnt]['semantic_c']
-                        # steps = int(999 / (args.ddpm_steps - 1) * (args.ddpm_steps - iteration + 1))
-                        # t = repeat(torch.tensor([steps]), '1 -> b', b=im_lq_bs.size(0))
-                        # t = t.to(device).long()
-                        # x_T = model.q_sample_respace(x_start=init_latent, t=t, sqrt_alphas_cumprod=sqrt_alphas_cumprod, 
-                        #     sqrt_one_minus_alphas_cumprod=sqrt_one_minus_alphas_cumprod, noise=noise)
-                        # patch_info[cnt]['init_latent'] = init_latent
-                        
-                        for img_id in range(im_lq_bs.size(0)):
-                            print("Image: ", img_id, "---")                               
-                            # x0_tilda_latent_1 = x0_tilda_latent[img_id, :, :, :].unsqueeze(0)
-                            init_latent = patch_info[cnt]['init_latent'][img_id].unsqueeze(0)
-                            x_T = patch_info[cnt]['x_T'][img_id].unsqueeze(0)
-                            x0_tilda = patch_info[cnt]['x0_head'][img_id].unsqueeze(0)
-                            # x_T_1, x0_head = model.sample_canvas_one_iter(iteration=iteration, cond=semantic_c, struct_cond=init_latent, 
-                            #                 batch_size=im_lq_pch.size(0), timesteps=args.ddpm_steps, time_replace=args.ddpm_steps, 
-                            #                 x_T=x_T, tile_size=int(args.input_size/8), tile_overlap=args.tile_overlap, 
-                            #                 batch_size_sample=args.n_samples, return_x0=True, x0_input=x0_tilda)
-                            x_T_1, x0_head = model.sample_canvas_one_iter(iteration=iteration, cond=semantic_c, struct_cond=init_latent, 
-                                            batch_size=im_lq_pch.size(0), timesteps=args.ddpm_steps, time_replace=args.ddpm_steps, 
-                                            x_T=x_T, tile_size=int(args.input_size/8), tile_overlap=args.tile_overlap, 
-                                            batch_size_sample=args.n_samples, return_x0=True, x0_input=x0_tilda_latent[img_id].unsqueeze(0))
-                            # if iteration > 0:
-                            patch_info[cnt]['x_T'][img_id] = x_T_1
-                            out1 = visualize_image(x0_head, im_lq_pch[img_id].unsqueeze(0), out_dict, out_img_name=f'tmp_debug/decoded_x0_proposed_img_{img_id}_iter_{3-iteration}_patch_{cnt}.png')                            
-                            import pdb;pdb.set_trace()
-                        cnt += 1
-                    # Update the image as x_T-1
-                            
-                    # import pdb; pdb.set_trace()
-                """
+            # import pdb; pdb.set_trace()
+                 
 def train_proposed(dataset, op, pipe, testing_iterations, saving_iterations, checkpoint_iterations, checkpoint, debug_from, args, dataset2=None):
     #############################################
     # load StableSR model and scheduler
