@@ -25,6 +25,8 @@ from utils import camera_utils
 from scene.cameras import Camera
 import numpy as np
 from utils.camera_utils import *
+import cv2
+import imageio
 
 def render_set(model_path, name, iteration, views, gaussians, pipeline, background, kernel_size, scale_factor):    
     # render_path = os.path.join(model_path, name, "ours_{}".format(iteration), f"test_preds_{scale_factor}")
@@ -42,8 +44,50 @@ def render_set(model_path, name, iteration, views, gaussians, pipeline, backgrou
             torchvision.utils.save_image(rendering, os.path.join(render_path, '{0:05d}'.format(idx) + ".png"))
             torchvision.utils.save_image(gt, os.path.join(gts_path, '{0:05d}'.format(idx) + ".png"))
 
+def render_interpolate(dataset : ModelParams, iteration : int, pipeline : PipelineParams, skip_train : bool, skip_test : bool, num_frames=15):
+    with torch.no_grad():
+        gaussians = GaussianModel(dataset.sh_degree)        
+        scene = Scene(dataset, gaussians, load_iteration=iteration, shuffle=False, train_tiny=args.train_tiny)        
+        scale_factor = dataset.resolution
+        bg_color = [1,1,1] if dataset.white_background else [0, 0, 0]
+        background = torch.tensor(bg_color, dtype=torch.float32, device="cuda")
+        kernel_size = dataset.kernel_size
+
+        # Output folder
+        render_path = os.path.join(dataset.model_path, "ours_interpolation", f"DS_{scale_factor}", f"train_preds_{scale_factor}")
+        makedirs(render_path, exist_ok=True)
+        
+        # Get the two training views
+        trainCameras = scene.getTrainCameras().copy()
+        cams = []
+        for i in range(len(trainCameras)):
+            cam = trainCameras[i]
+            extrinsic = np.zeros((4,4))
+            extrinsic[:3,:3] = cam.R
+            extrinsic[:3,-1] = cam.T
+            extrinsic[-1,-1] = 1
+            cams.append(extrinsic)
+        
+        # View interpolation
+        interpolated_poses = interpolate_camera_poses(cams[0], cams[1], num_frames)        
+        
+        # import pdb; pdb.set_trace()
+        # _, h, w = cam.original_image.shape
+        # fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+        # video_writer = cv2.VideoWriter(os.path.join(render_path,'video.mp4'), fourcc, fps=8, frameSize=(w, h))
+
+        video_writer = imageio.get_writer(os.path.join(render_path,'video.mp4'), fps=5, quality=8, codec="libx264")
+        # Rendering & saving
+        for i in range(num_frames):
+            pose = interpolated_poses[i]
+            cam_new = Camera(colmap_id=-1, R=pose[:3,:3], T=pose[:3,-1], FoVx=cam.FoVx, FoVy=cam.FoVy, gt_alpha_mask=None, image=cam.original_image, image_name='interpolation', uid=cam.uid, )
+            rendering = render(cam_new, gaussians, pipeline, background, kernel_size=kernel_size)["render"]
+            torchvision.utils.save_image(rendering, os.path.join(render_path,f'interpolation_{i}.png'))
+            video_writer.append_data((np.uint8(torch.clamp(rendering.cpu(), min=0, max=1.0).permute(1,2,0)*255)))
+        video_writer.close()
+    
 def render_sets(dataset : ModelParams, iteration : int, pipeline : PipelineParams, skip_train : bool, skip_test : bool):
-    with torch.no_grad():        
+    with torch.no_grad():
         gaussians = GaussianModel(dataset.sh_degree)        
         scene = Scene(dataset, gaussians, load_iteration=iteration, shuffle=False, train_tiny=args.train_tiny)
         # Super resolving gaussians
@@ -178,13 +222,17 @@ if __name__ == "__main__":
     parser.add_argument("--quiet", action="store_true")
     parser.add_argument("--video", action="store_true")
     parser.add_argument("--train_tiny", action="store_true")
+    parser.add_argument("--interpolate", action="store_true")
     args = get_combined_args(parser)
     print("Rendering " + args.model_path)
-
+    
     # Initialize system state (RNG)
     safe_state(args.quiet)    
     if args.video:
         render_video(model.extract(args), args.iteration, pipeline.extract(args), args.skip_train, args.skip_test)
+    elif args.interpolate and args.train_tiny:
+        print("Rendering interpolated view ----------")
+        render_interpolate(model.extract(args), args.iteration, pipeline.extract(args), args.skip_train, args.skip_test)
     else:
         print("Rendering sets ----------")
         render_sets(model.extract(args), args.iteration, pipeline.extract(args), args.skip_train, args.skip_test)

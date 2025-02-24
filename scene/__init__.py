@@ -39,6 +39,7 @@ class Scene:
 
         self.train_cameras = {}
         self.test_cameras = {}
+        # import pdb; pdb.set_trace()
         if os.path.exists(os.path.join(args.source_path, "sparse")):
             scene_info = sceneLoadTypeCallbacks["Colmap"](args.source_path, args.images, args.eval, resolution=args.resolution, train_tiny=train_tiny)
         elif os.path.exists(os.path.join(args.source_path, "transforms_train.json")):
@@ -63,7 +64,7 @@ class Scene:
             for id, cam in enumerate(camlist):
                 json_cams.append(camera_to_JSON(id, cam))
             with open(os.path.join(self.model_path, "cameras.json"), 'w') as file:
-                json.dump(json_cams, file)        
+                json.dump(json_cams, file)
         if shuffle:
             random.shuffle(scene_info.train_cameras)  # Multi-res consistent random shuffling
             # random.shuffle(scene_info.test_cameras)  # Multi-res consistent random shuffling
@@ -72,6 +73,7 @@ class Scene:
         
         for resolution_scale in resolution_scales:
             print("Loading Training Cameras")
+            # If the program stops here, it's bc CPU meemory is full
             self.train_cameras[resolution_scale] = cameraList_from_camInfos(scene_info.train_cameras, resolution_scale, args)
             print("Loading Test Cameras")
             self.test_cameras[resolution_scale] = cameraList_from_camInfos(scene_info.test_cameras, resolution_scale, args)

@@ -11,9 +11,21 @@
 # python scripts/run_mipnerf360.py
 
 ###### CURRENT DESIGN ######
-export NUM_ITERS=50;
+# export NUM_ITERS=100;
+# export CONSEC_TIMESTEPS=1;
+# # export NUM_INFERENCE_STEPS=30;
+# python scripts/run_mipnerf360.py
+
+
+# export NUM_ITERS=150;
+# export CONSEC_TIMESTEPS=1;
+# # export NUM_INFERENCE_STEPS=30;
+# python scripts/run_mipnerf360.py
+
+
+export NUM_ITERS=200;
 export CONSEC_TIMESTEPS=1;
-export NUM_INFERENCE_STEPS=30;
+# export NUM_INFERENCE_STEPS=30;
 python scripts/run_mipnerf360.py
 
 # export NUM_ITERS=50;

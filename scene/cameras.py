@@ -13,6 +13,7 @@ import torch
 from torch import nn
 import numpy as np
 from utils.graphics_utils import getWorld2View2, getProjectionMatrix
+import copy
 
 class Camera(nn.Module):
     def __init__(self, colmap_id, R, T, FoVx, FoVy, image, gt_alpha_mask,
@@ -60,6 +61,28 @@ class Camera(nn.Module):
         tan_fovy = np.tan(self.FoVy / 2.0)
         self.focal_y = self.image_height / (2.0 * tan_fovy)
         self.focal_x = self.image_width / (2.0 * tan_fovx)
+    
+    def copy(self):
+        """
+        Creates a deep copy of the current Camera instance.
+
+        Returns:
+            Camera: A new Camera object with the same parameters.
+        """
+        return Camera(
+            colmap_id=self.colmap_id,
+            R=self.R.copy(),  # Clone tensor
+            T=self.T.copy(),  # Clone tensor
+            FoVx=self.FoVx,
+            FoVy=self.FoVy,
+            image=self.original_image.clone(),  # Clone tensor
+            gt_alpha_mask=None,  # Assuming we don't need to copy the mask
+            image_name=self.image_name,
+            uid=self.uid,
+            trans=self.trans.copy(),  # Clone numpy array
+            scale=self.scale,
+            data_device=str(self.data_device)  # Convert device to string
+        )
          
 class MiniCam:
     def __init__(self, width, height, fovy, fovx, znear, zfar, world_view_transform, full_proj_transform):

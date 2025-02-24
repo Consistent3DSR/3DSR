@@ -14,10 +14,13 @@ import numpy as np
 from utils.general_utils import PILtoTorch
 from utils.graphics_utils import fov2focal
 import scipy
+from scipy.spatial.transform import Rotation as R, Slerp
+import scipy.spatial.transform
 
 WARNED = False
 
 def loadCam(args, id, cam_info, resolution_scale):
+    
     orig_w, orig_h = cam_info.image.size
     if args.resolution in [1, 2, 4, 8, 16, 32, 64]:
         resolution = round(orig_w/(resolution_scale * args.resolution)), round(orig_h/(resolution_scale * args.resolution))
@@ -44,6 +47,7 @@ def loadCam(args, id, cam_info, resolution_scale):
         scale = float(global_down) * float(resolution_scale)
         resolution = (int(orig_w / scale), int(orig_h / scale))
     
+    # If the program stops here, it's bc CPU meemory is full
     resized_image_rgb = PILtoTorch(cam_info.image, resolution)
 
     gt_image = resized_image_rgb[:3, ...]
@@ -61,7 +65,7 @@ def loadCam(args, id, cam_info, resolution_scale):
 
 def cameraList_from_camInfos(cam_infos, resolution_scale, args):
     camera_list = []
-
+    
     for id, c in enumerate(cam_infos):
         try:
             camera_list.append(loadCam(args, id, c, resolution_scale))
@@ -362,3 +366,48 @@ def transform_poses_pca(poses):
     transform = np.diag(np.array([scale_factor] * 3 + [1])) @ transform
 
     return poses_recentered, transform
+
+def interpolate_camera_poses(cam1, cam2, num_frames):
+    """
+    Interpolates num_frames intermediate camera extrinsics between cam1 and cam2.
+
+    Args:
+        cam1 (numpy.ndarray): (4,4) Camera extrinsic matrix (R|t)
+        cam2 (numpy.ndarray): (4,4) Camera extrinsic matrix (R|t)
+        num_frames (int): Number of interpolated frames to generate.
+
+    Returns:
+        list of numpy.ndarray: A list of (4,4) interpolated camera extrinsic matrices.
+    """
+    # Extract rotation matrices (3x3) and translation vectors (3x1)
+    R1, t1 = cam1[:3, :3], cam1[:3, 3]
+    R2, t2 = cam2[:3, :3], cam2[:3, 3]
+
+    # Convert rotation matrices to quaternions
+    rot1 = R.from_matrix(R1)
+    rot2 = R.from_matrix(R2)
+    
+    # Define keyframes for SLERP (rotation interpolation)
+    key_times = [0, 1]  # Start and end
+    key_rots = R.from_quat([rot1.as_quat(), rot2.as_quat()])  # Convert to quaternions
+    slerp = Slerp(key_times, key_rots)  # Create SLERP object
+
+    interpolated_poses = []
+
+    for i in range(1, num_frames + 1):
+        alpha = i / (num_frames + 1)  # Normalized interpolation factor
+
+        # Interpolate rotation using SLERP
+        interp_R = slerp(alpha).as_matrix()
+
+        # Interpolate translation using linear interpolation (LERP)
+        interp_t = (1 - alpha) * t1 + alpha * t2
+
+        # Construct interpolated extrinsic matrix
+        interp_extrinsic = np.eye(4)
+        interp_extrinsic[:3, :3] = interp_R
+        interp_extrinsic[:3, 3] = interp_t
+
+        interpolated_poses.append(interp_extrinsic)
+
+    return interpolated_poses
