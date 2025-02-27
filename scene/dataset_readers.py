@@ -83,7 +83,7 @@ def readColmapCameras(cam_extrinsics, cam_intrinsics, images_folder):
         uid = intr.id
         R = np.transpose(qvec2rotmat(extr.qvec))
         T = np.array(extr.tvec)
-        # import pdb; pdb.set_trace()
+                
         if intr.model=="SIMPLE_PINHOLE":
             focal_length_x = intr.params[0]
             FovY = focal2fov(focal_length_x, height)
@@ -195,9 +195,10 @@ def readColmapSceneInfo(path, images, eval, llffhold=8, resolution=1, train_tiny
     except:
         pcd = None
     
+    # Jamie
     if train_tiny:
         small_list = []
-        # small_list.append(train_cam_infos[0])
+        small_list.append(train_cam_infos[0])
         small_list.append(train_cam_infos[1])
         small_list.append(train_cam_infos[3])
         # small_list.append(train_cam_infos[5])
