@@ -57,55 +57,55 @@ import torch.nn.functional as F
 from pathlib import Path
 import time
 
-prune_ratio = float(os.environ["PRUNE_RATIO"]) if "PRUNE_RATIO" in os.environ else 1.0
-min_opacity = float(os.environ["MIN_OPACITY"]) if "MIN_OPACITY" in os.environ else 0.005
-consecutive_timesteps = int(os.environ["CONSEC_TIMESTEPS"])
+# prune_ratio = float(os.environ["PRUNE_RATIO"]) if "PRUNE_RATIO" in os.environ else 1.0
+# min_opacity = float(os.environ["MIN_OPACITY"]) if "MIN_OPACITY" in os.environ else 0.005
+# consecutive_timesteps = int(os.environ["CONSEC_TIMESTEPS"])
 # num_inference_steps = int(os.environ["NUM_INFERENCE_STEPS"])
 
-def interpolate_camera_poses(cam1, cam2, num_frames):
-    """
-    Interpolates num_frames intermediate camera extrinsics between cam1 and cam2.
+# def interpolate_camera_poses(cam1, cam2, num_frames):
+#     """
+#     Interpolates num_frames intermediate camera extrinsics between cam1 and cam2.
 
-    Args:
-        cam1 (numpy.ndarray): (4,4) Camera extrinsic matrix (R|t)
-        cam2 (numpy.ndarray): (4,4) Camera extrinsic matrix (R|t)
-        num_frames (int): Number of interpolated frames to generate.
+#     Args:
+#         cam1 (numpy.ndarray): (4,4) Camera extrinsic matrix (R|t)
+#         cam2 (numpy.ndarray): (4,4) Camera extrinsic matrix (R|t)
+#         num_frames (int): Number of interpolated frames to generate.
 
-    Returns:
-        list of numpy.ndarray: A list of (4,4) interpolated camera extrinsic matrices.
-    """
-    # Extract rotation matrices (3x3) and translation vectors (3x1)
-    R1, t1 = cam1[:3, :3], cam1[:3, 3]
-    R2, t2 = cam2[:3, :3], cam2[:3, 3]
+#     Returns:
+#         list of numpy.ndarray: A list of (4,4) interpolated camera extrinsic matrices.
+#     """
+#     # Extract rotation matrices (3x3) and translation vectors (3x1)
+#     R1, t1 = cam1[:3, :3], cam1[:3, 3]
+#     R2, t2 = cam2[:3, :3], cam2[:3, 3]
 
-    # Convert rotation matrices to quaternions
-    rot1 = R.from_matrix(R1)
-    rot2 = R.from_matrix(R2)
+#     # Convert rotation matrices to quaternions
+#     rot1 = R.from_matrix(R1)
+#     rot2 = R.from_matrix(R2)
     
-    # Define keyframes for SLERP (rotation interpolation)
-    key_times = [0, 1]  # Start and end
-    key_rots = R.from_quat([rot1.as_quat(), rot2.as_quat()])  # Convert to quaternions
-    slerp = Slerp(key_times, key_rots)  # Create SLERP object
+#     # Define keyframes for SLERP (rotation interpolation)
+#     key_times = [0, 1]  # Start and end
+#     key_rots = R.from_quat([rot1.as_quat(), rot2.as_quat()])  # Convert to quaternions
+#     slerp = Slerp(key_times, key_rots)  # Create SLERP object
 
-    interpolated_poses = []
+#     interpolated_poses = []
 
-    for i in range(1, num_frames + 1):
-        alpha = i / (num_frames + 1)  # Normalized interpolation factor
+#     for i in range(1, num_frames + 1):
+#         alpha = i / (num_frames + 1)  # Normalized interpolation factor
 
-        # Interpolate rotation using SLERP
-        interp_R = slerp(alpha).as_matrix()
+#         # Interpolate rotation using SLERP
+#         interp_R = slerp(alpha).as_matrix()
 
-        # Interpolate translation using linear interpolation (LERP)
-        interp_t = (1 - alpha) * t1 + alpha * t2
+#         # Interpolate translation using linear interpolation (LERP)
+#         interp_t = (1 - alpha) * t1 + alpha * t2
 
-        # Construct interpolated extrinsic matrix
-        interp_extrinsic = np.eye(4)
-        interp_extrinsic[:3, :3] = interp_R
-        interp_extrinsic[:3, 3] = interp_t
+#         # Construct interpolated extrinsic matrix
+#         interp_extrinsic = np.eye(4)
+#         interp_extrinsic[:3, :3] = interp_R
+#         interp_extrinsic[:3, 3] = interp_t
 
-        interpolated_poses.append(interp_extrinsic)
+#         interpolated_poses.append(interp_extrinsic)
 
-    return interpolated_poses
+#     return interpolated_poses
 
 @torch.no_grad()
 def create_offset_gt(image, offset):
@@ -395,7 +395,7 @@ def prepare_training(dataset, opt, pipe, testing_iterations, saving_iterations, 
         
     if checkpoint:
         (model_params, first_iter) = torch.load(checkpoint)
-        gaussians.restore(model_params, opt)
+        gaussians.restore(model_params, opt)    
 
     bg_color = [1, 1, 1] if dataset.white_background else [0, 0, 0]
     background = torch.tensor(bg_color, dtype=torch.float32, device="cuda")
@@ -403,10 +403,13 @@ def prepare_training(dataset, opt, pipe, testing_iterations, saving_iterations, 
     out_dict = {"scene": scene, "gaussians": gaussians, "tb_writer": tb_writer}
     return out_dict
 
-def training_with_iters(in_dict, dataset, opt, pipe, testing_iterations, saving_iterations, checkpoint_iterations, checkpoint, debug_from, args, dataset2=None, SR_iter=0, SR_step=1):    
+def training_with_iters(in_dict, dataset, opt, pipe, testing_iterations, saving_iterations, checkpoint_iterations, checkpoint, debug_from, args, dataset2=None, SR_iter=0):
     scene = in_dict['scene']
     gaussians = in_dict['gaussians']
     tb_writer = in_dict['tb_writer']
+    
+    if args.lpips_train_en:
+        lpips_fn = lpips.LPIPS(net='alex').cuda()
     
     first_iter = 0    
     bg_color = [1, 1, 1] if dataset.white_background else [0, 0, 0]
@@ -432,7 +435,7 @@ def training_with_iters(in_dict, dataset, opt, pipe, testing_iterations, saving_
     progress_bar = tqdm(range(first_iter, opt.iterations), desc="Training progress")
     first_iter += 1
     
-    for iteration in range(first_iter, opt.iterations + 1):        
+    for iteration in range(first_iter, opt.iterations + 1):
         if network_gui.conn == None:
             network_gui.try_connect()
         while network_gui.conn != None:
@@ -485,7 +488,8 @@ def training_with_iters(in_dict, dataset, opt, pipe, testing_iterations, saving_
             gt_image = create_offset_gt(gt_image, subpixel_offset)
 
         Ll1 = l1_loss(image, gt_image)
-        loss = (1.0 - opt.lambda_dssim) * Ll1 + opt.lambda_dssim * (1.0 - ssim(image, gt_image))
+        loss_hr = (1.0 - opt.lambda_dssim) * Ll1 + opt.lambda_dssim * (1.0 - ssim(image, gt_image))
+        loss = loss_hr
         # import pdb; pdb.set_trace()
         if iteration > opt.iterations - len(trainCameras):
             training_folder = os.path.join(args.output_folder, 'training_views')
@@ -494,19 +498,35 @@ def training_with_iters(in_dict, dataset, opt, pipe, testing_iterations, saving_
             file_name = os.path.join(training_folder, viewpoint_cam.image_name + ".png")
             torchvision.utils.save_image(image, os.path.join(file_name))
         
+        # if args.fidelity_train_en:
+        #     image_lr = torch.nn.functional.interpolate(image.unsqueeze(0), scale_factor=0.25, mode='bicubic', antialias=True).squeeze(0)
+        #     gt_image_lr = torch.nn.functional.interpolate(gt_image.unsqueeze(0), size=image_lr.size()[-2:], mode='bicubic', antialias=True).squeeze(0)
+        #     Ll1_lr = l1_loss(image_lr, gt_image_lr)
+        #     loss_lr = (1.0 - opt.lambda_dssim) * Ll1_lr + opt.lambda_dssim * (1.0 - ssim(image_lr, gt_image_lr))
+        #     if args.lambda_hr == 1:
+        #         loss = loss_lr + loss_hr
+        #     else:
+        #         loss = (1.0 - args.lambda_hr) * loss_lr + args.lambda_hr * loss_hr
+        if args.fidelity_train_en:
+            lr_resolution = dataset.resolution * 4
+            gt_folder = '/fs/nexus-projects/dyn3Dscene/Codes/data/my_new_resize'
+            scene_name = os.path.basename(dataset.source_path)
+            gt_path = os.path.join(gt_folder, scene_name, f'images_{lr_resolution}', viewpoint_cam.image_name+'.png')
+            image_gt_lr = Image.open(gt_path)
+            w_lr, h_lr = image_gt_lr.size
+            image_gt_lr = PILtoTorch(image_gt_lr, (w_lr, h_lr)).cuda()
+            image_lr = torch.nn.functional.interpolate(image.unsqueeze(0), scale_factor=0.25, mode='bicubic', antialias=True).squeeze(0)
+            loss_lr = (1.0 - opt.lambda_dssim) * l1_loss(image_lr, image_gt_lr) + opt.lambda_dssim * (1.0 - ssim(image_lr, image_gt_lr))
+            loss += loss_lr * args.wt_lr
+        elif args.lpips_train_en:
+            image_lr = torch.nn.functional.interpolate(image.unsqueeze(0), scale_factor=0.25, mode='bicubic', antialias=True).squeeze(0)
+            gt_image_lr = torch.nn.functional.interpolate(gt_image.unsqueeze(0), size=image_lr.size()[-2:], mode='bicubic', antialias=True).squeeze(0)
+            loss_lpips = lpips_fn(image_lr, gt_image_lr)[0][0][0][0].mean()
+            loss = loss_lpips * args.lpips_wt + loss_hr
+      
         loss.backward()
-        # import pdb; pdb.set_trace()
         iter_end.record()
         
-        # if iteration > opt.iterations - len(trainCameras):
-        #     # training_folder = os.path.join(args.output_folder, 'training_with_step',f"timesteps_{SR_iter * SR_step}_{(SR_iter + 1) * SR_step}", "GS_training_results")
-        #     training_folder = os.path.join(args.outdir, 'train_results')
-        #     if not os.path.exists(training_folder):
-        #         os.makedirs(training_folder)
-        #     # file_name = os.path.join(training_folder, viewpoint_cam.image_name + f"_step_{3-SR_iter}_iter_{iteration}.png")            
-        #     file_name = os.path.join(training_folder, viewpoint_cam.image_name + f"_step_{3-SR_iter}.png")            
-        #     print(file_name)
-        #     torchvision.utils.save_image(image, os.path.join(file_name))         
         if iteration == opt.iterations - 1:
             training_folder = os.path.join(args.outdir, 'train_results')
             if not os.path.exists(training_folder):
@@ -532,8 +552,9 @@ def training_with_iters(in_dict, dataset, opt, pipe, testing_iterations, saving_
             # Log and save
             training_report(tb_writer, iteration, Ll1, loss, l1_loss, iter_start.elapsed_time(iter_end), testing_iterations, scene, render, (pipe, background, dataset.kernel_size))
             if (iteration in saving_iterations):
+                final_iter = (3-SR_iter) * opt.iterations + iteration
                 print("\n[ITER {}] Saving Gaussians".format(iteration))
-                scene.save(iteration)
+                scene.save(final_iter)
 
             # Densification
             if iteration < opt.densify_until_iter:
@@ -693,18 +714,19 @@ def train_proposed_2025(dataset, op, pipe, testing_iterations, saving_iterations
     images_path = np.array(copy.deepcopy(images_path_ori))
     
     # Only taking training views for SR
-    llffhold = 8    
+    llffhold = 8
     all_indices = np.arange(len(images_path))
     train_indices = all_indices % llffhold != 0
-    sr_indices = all_indices[train_indices]    
+    sr_indices = all_indices[train_indices]
     images_path = images_path[sr_indices[:]]
     
-    for item in images_path_ori:
-        img_name = item.split('/')[-1]
-        if os.path.exists(os.path.join(outpath, img_name)):
-            print('******* Removed item:', img_name)
-            images_path.remove(item)
+    # for item in images_path_ori:
+    #     img_name = item.split('/')[-1]
+    #     if os.path.exists(os.path.join(outpath, img_name)):
+    #         print('******* Removed item:', img_name)
+    #         images_path.remove(item)
     print(f"Found {len(images_path)} inputs.")
+    # import pdb; pdb.set_trace()
     
     out_dict = prepare_model(args)
     model = out_dict['model']
@@ -739,6 +761,7 @@ def train_proposed_2025(dataset, op, pipe, testing_iterations, saving_iterations
     scene = input_dict["scene"]
     trainCameras = scene.getTrainCameras()
     
+    GS_iters = [5000, 3000, 2000, 1000]
     #############################################
     # Prepare for SR method
     #############################################
@@ -765,9 +788,13 @@ def train_proposed_2025(dataset, op, pipe, testing_iterations, saving_iterations
                 im_lq_bs = []
                 im_path_bs = []
                 for img_id in range(len(images_path_small)):
-                    cur_image = read_image(images_path_small[img_id])
+                    try:
+                        cur_image = read_image(images_path_small[img_id])
+                    except:
+                        import pdb; pdb.set_trace()
                     size_min = min(cur_image.size(-1), cur_image.size(-2))
-                    upsample_scale = max(args.input_size/size_min, args.upscale)
+                    upsample_scale = max(args.input_size/size_min,
+                                         args.upscale)
                     cur_image = F.interpolate(
                                 cur_image,
                                 size=(int(cur_image.size(-2)*upsample_scale),
@@ -953,15 +980,19 @@ def train_proposed_2025(dataset, op, pipe, testing_iterations, saving_iterations
                                 img_name = str(Path(im_path_bs[img_id]).name)
                                 basename = os.path.splitext(os.path.basename(img_name))[0]
                                 outpath = str(Path(args.outdir)) + '/' + basename + f'_step_{3-int(iteration)}.png'
+                                Image.fromarray(im_sr[0, ].astype(np.uint8)).save(outpath)                         
                                 print('Finished:', outpath)
-                                Image.fromarray(im_sr[0, ].astype(np.uint8)).save(outpath)
+                                
+                                if iteration == 0:
+                                    final_sr_path = os.path.join(args.outdir, 'final_sr_results')
+                                    os.makedirs(final_sr_path, exist_ok=True)
+                                    outpath = final_sr_path + '/' + basename + f'.png'
+                                    Image.fromarray(im_sr[0, ].astype(np.uint8)).save(outpath)
                                 
                         print('------------------------- Finished one batch --------------------------')
                     #############################################
                     # End of loop for denoised images
-                    #############################################
-                
-                print('************** Start encoding x0~ to latent space! **************')
+                    #############################################                
             
             #############################################
             # Update ground truth image in trainCameras  
@@ -969,9 +1000,13 @@ def train_proposed_2025(dataset, op, pipe, testing_iterations, saving_iterations
             for img_id in range(len(trainCameras)):
                 # If you read from the saved image, you can use the following code
                 # cam_id =  loop_id * imgs_per_batch + img_id
+                
                 img_name = trainCameras[img_id].image_name
                 img_path = str(Path(args.outdir)) + '/' + img_name + f'_step_{3-int(iteration)}.png'
-                img_transfer = Image.open(img_path).convert("RGB")
+                try:
+                    img_transfer = Image.open(img_path).convert("RGB")
+                except:
+                    import pdb; pdb.set_trace()
                 width, height = img_transfer.size
                 loaded_image = PILtoTorch(img_transfer, (width, height)).cuda()
                 # print(img_path)
@@ -982,10 +1017,9 @@ def train_proposed_2025(dataset, op, pipe, testing_iterations, saving_iterations
             # #############################################
             # # Train GS
             # #############################################
+            # op.iterations = GS_iters[3-iteration]
             input_dict = training_with_iters(input_dict, dataset, op, pipe, testing_iterations, saving_iterations,
-                                            checkpoint_iterations, checkpoint, debug_from, args, dataset2, SR_iter=iteration,
-                                SR_step=consecutive_timesteps)
-
+                                            checkpoint_iterations, checkpoint, debug_from, args, dataset2, SR_iter=iteration,) 
                  
 def train_proposed(dataset, op, pipe, testing_iterations, saving_iterations, checkpoint_iterations, checkpoint, debug_from, args, dataset2=None):
     #############################################
@@ -1351,6 +1385,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
         testCameras2 = scene2.getTestCameras().copy()
         allCameras2 = trainCameras2 + testCameras2
         viewpoint_stack2 = None
+        import pdb; pdb.set_trace()
     
     if args.load_pretrain:
         scene = Scene(dataset, gaussians, load_iteration=30000, shuffle=False, train_tiny=args.train_tiny)
@@ -1505,17 +1540,18 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
         # Add LPIPS loss
         if args.lpips_train_en:
             lpips_loss = lpips_fn(image, gt_image)[0][0][0][0]
-            lpips_weight = 0.2
-            loss += lpips_loss * lpips_weight
+            # lpips_weight = 0.2
+            loss += lpips_loss * args.lpips_wt
         
         # Fidelity training
         if args.fidelity_train_en:
             if not viewpoint_stack2:
                 viewpoint_stack2 = scene2.getTrainCameras().copy()
             viewpoint_cam2 = viewpoint_stack2.pop(pop_id)
+            import pdb; pdb.set_trace()
             avg_pool = torch.nn.AvgPool2d(kernel_size=4, stride=4, padding=0)
             img_small = avg_pool(image)
-            gt_img_small = view_point_cam2.original_image.cuda()
+            gt_img_small = viewpoint_cam2.original_image.cuda()
             # torchvision.utils.save_image(img_small, "img_small.png")
             # torchvision.utils.save_image(gt_img_small, "gt_img_small.png")
             # torchvision.utils.save_image(image, "img.png")
@@ -1595,7 +1631,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
 
     import pdb; pdb.set_trace()
         
-def prepare_output_and_logger(args):    
+def prepare_output_and_logger(args):
     if not args.model_path:
         if os.getenv('OAR_JOB_ID'):
             unique_str=os.getenv('OAR_JOB_ID')
@@ -1678,11 +1714,14 @@ def parse_args():
     parser.add_argument("--SR_GS", action="store_true")
     parser.add_argument("--fidelity_train_en", action="store_true")
     parser.add_argument("--musiq_train_en", action="store_true")
-    parser.add_argument("--lpips_train_en", action="store_true")
+    parser.add_argument("--lpips_train_en", action="store_true")    
     parser.add_argument("--prune_init_en", action="store_true")
     parser.add_argument("--seed", type=int, default=999)
     parser.add_argument("--train_tiny", action="store_true")
     parser.add_argument("--edge_aware_loss_en", action="store_true")
+    parser.add_argument("--lpips_wt", type=float, default=0.2)
+    parser.add_argument("--wt_lr", type=float, default=0.4)
+    parser.add_argument("--prune_init_en", action="store_true")
     #############################################
     #### From Stable SR code ####
     #############################################
