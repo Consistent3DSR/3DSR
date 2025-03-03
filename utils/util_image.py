@@ -794,8 +794,13 @@ class ImageSpliterTh:
         else:
             h_start, h_end, w_start, w_end = index_infos
 
-        self.im_res[:, :, h_start:h_end, w_start:w_end] += pch_res * self.weight
-        self.pixel_count[:, :, h_start:h_end, w_start:w_end] += self.weight
+        try:
+            self.im_res[:, :, h_start:h_end, w_start:w_end] += pch_res * self.weight
+            self.pixel_count[:, :, h_start:h_end, w_start:w_end] += self.weight
+        except:
+            patch_h, patch_w = pch_res.shape[2], pch_res.shape[3]
+            self.im_res[:, :, h_start:h_end, w_start:w_end] += pch_res * self.weight[:, :, :patch_h, :patch_w]
+            self.pixel_count[:, :, h_start:h_end, w_start:w_end] += self.weight[:, :, :patch_h, :patch_w]
 
     def gather(self):
         assert torch.all(self.pixel_count != 0)
