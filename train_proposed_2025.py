@@ -714,11 +714,12 @@ def train_proposed_2025(dataset, op, pipe, testing_iterations, saving_iterations
     images_path = np.array(copy.deepcopy(images_path_ori))
     
     # Only taking training views for SR
-    llffhold = 8
-    all_indices = np.arange(len(images_path))
-    train_indices = all_indices % llffhold != 0
-    sr_indices = all_indices[train_indices]
-    images_path = images_path[sr_indices[:]]
+    if not 'synthetic' in args.init_img:
+        llffhold = 8
+        all_indices = np.arange(len(images_path))
+        train_indices = all_indices % llffhold != 0
+        sr_indices = all_indices[train_indices]
+        images_path = images_path[sr_indices[:]]
     
     # for item in images_path_ori:
     #     img_name = item.split('/')[-1]
@@ -757,6 +758,8 @@ def train_proposed_2025(dataset, op, pipe, testing_iterations, saving_iterations
     #############################################
     # Loading scene and Gaussians
     #############################################
+    # import pdb; pdb.set_trace()
+    op.densify_until_iter = args.densify_end
     input_dict = prepare_training(dataset, op, pipe, testing_iterations, saving_iterations, checkpoint_iterations, checkpoint, debug_from, args, dataset2)
     scene = input_dict["scene"]
     trainCameras = scene.getTrainCameras()
@@ -850,7 +853,6 @@ def train_proposed_2025(dataset, op, pipe, testing_iterations, saving_iterations
                         # Start of loop for denoised images
                         #############################################
                         for img_id in range(len(im_path_bs)):
-                            print(" ---------- Image: ", im_path_bs[img_id], "---------")
                             #############################################
                             # Split image to patches
                             #############################################
@@ -927,6 +929,8 @@ def train_proposed_2025(dataset, op, pipe, testing_iterations, saving_iterations
                                 basename = os.path.splitext(os.path.basename(img_name))[0]
                                 outpath = str(Path(args.outdir)) + '/' + basename + f'_step_{3-int(iteration)}.png'
                                 print('Finished:', outpath)
+                                
+                                
                                 Image.fromarray(im_sr[0, ].astype(np.uint8)).save(outpath)
                             
                             #############################################
@@ -987,9 +991,7 @@ def train_proposed_2025(dataset, op, pipe, testing_iterations, saving_iterations
                                     final_sr_path = os.path.join(args.outdir, 'final_sr_results')
                                     os.makedirs(final_sr_path, exist_ok=True)
                                     outpath = final_sr_path + '/' + basename + f'.png'
-                                    Image.fromarray(im_sr[0, ].astype(np.uint8)).save(outpath)
-                                
-                        print('------------------------- Finished one batch --------------------------')
+                                    Image.fromarray(im_sr[0, ].astype(np.uint8)).save(outpath)                        
                     #############################################
                     # End of loop for denoised images
                     #############################################                
@@ -1018,8 +1020,13 @@ def train_proposed_2025(dataset, op, pipe, testing_iterations, saving_iterations
             # # Train GS
             # #############################################
             # op.iterations = GS_iters[3-iteration]
+             
             input_dict = training_with_iters(input_dict, dataset, op, pipe, testing_iterations, saving_iterations,
                                             checkpoint_iterations, checkpoint, debug_from, args, dataset2, SR_iter=iteration,) 
+            
+    op.iterations = 10000
+    input_dict = training_with_iters(input_dict, dataset, op, pipe, testing_iterations, saving_iterations,
+                                checkpoint_iterations, checkpoint, debug_from, args, dataset2, SR_iter=iteration,)
                  
 def train_proposed(dataset, op, pipe, testing_iterations, saving_iterations, checkpoint_iterations, checkpoint, debug_from, args, dataset2=None):
     #############################################
@@ -1721,7 +1728,7 @@ def parse_args():
     parser.add_argument("--edge_aware_loss_en", action="store_true")
     parser.add_argument("--lpips_wt", type=float, default=0.2)
     parser.add_argument("--wt_lr", type=float, default=0.4)
-    parser.add_argument("--prune_init_en", action="store_true")
+    parser.add_argument("--densify_end", type=int, default=15000)
     #############################################
     #### From Stable SR code ####
     #############################################
@@ -1900,6 +1907,7 @@ if __name__ == "__main__":
     else:
         print('No color correction')
     print('>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>')
+    
     
     # train_proposed(lp.extract(args), op.extract(args), pp.extract(args), args.test_iterations, args.save_iterations, args.checkpoint_iterations, args.start_checkpoint, args.debug_from, args)
     train_proposed_2025(lp.extract(args), op.extract(args), pp.extract(args), args.test_iterations, args.save_iterations, args.checkpoint_iterations, args.start_checkpoint, args.debug_from, args)
