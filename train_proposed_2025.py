@@ -27,6 +27,7 @@ from utils.general_utils import safe_state
 import uuid
 import lpips
 import pyiqa
+import natsort
 # from tqdm import tqdm
 from utils.image_utils import psnr
 from argparse import ArgumentParser, Namespace
@@ -509,7 +510,11 @@ def training_with_iters(in_dict, dataset, opt, pipe, testing_iterations, saving_
         #         loss = (1.0 - args.lambda_hr) * loss_lr + args.lambda_hr * loss_hr
         if args.fidelity_train_en:
             lr_resolution = dataset.resolution * 4
-            gt_folder = '/fs/nexus-projects/dyn3Dscene/Codes/data/my_new_resize'
+            if 'llff' in dataset.source_path:
+                gt_folder = '/fs/nexus-projects/dyn3Dscene/Codes/datasets/nerf_llff_data'
+            else:
+                gt_folder = '/fs/nexus-projects/dyn3Dscene/Codes/data/my_new_resize'
+            # import pdb; pdb.set_trace()
             scene_name = os.path.basename(dataset.source_path)
             gt_path = os.path.join(gt_folder, scene_name, f'images_{lr_resolution}', viewpoint_cam.image_name+'.png')
             image_gt_lr = Image.open(gt_path)
@@ -765,6 +770,16 @@ def train_proposed_2025(dataset, op, pipe, testing_iterations, saving_iterations
     trainCameras = scene.getTrainCameras()
     
     GS_iters = [5000, 3000, 2000, 1000]
+    # if 'llff' in dataset.source_path:
+    #     dir_name = dataset.source_path
+    #     lr_resolution = dataset.resolution * 4
+        
+    #     orig_folder =  os.path.join(dir_name, 'images')
+    #     orig_files = os.listdir(orig_folder)
+    #     orig_files = natsort.natsorted(orig_files)
+        
+    #     cur_files = os.listdir( os.path.join(dir_name, f'images_{lr_resolution}'))
+    #     cur_files = natsort.natsorted(cur_files)        
     #############################################
     # Prepare for SR method
     #############################################
@@ -984,7 +999,7 @@ def train_proposed_2025(dataset, op, pipe, testing_iterations, saving_iterations
                                 img_name = str(Path(im_path_bs[img_id]).name)
                                 basename = os.path.splitext(os.path.basename(img_name))[0]
                                 outpath = str(Path(args.outdir)) + '/' + basename + f'_step_{3-int(iteration)}.png'
-                                Image.fromarray(im_sr[0, ].astype(np.uint8)).save(outpath)                         
+                                Image.fromarray(im_sr[0, ].astype(np.uint8)).save(outpath)
                                 print('Finished:', outpath)
                                 
                                 if iteration == 0:
@@ -1003,6 +1018,9 @@ def train_proposed_2025(dataset, op, pipe, testing_iterations, saving_iterations
                 # If you read from the saved image, you can use the following code
                 # cam_id =  loop_id * imgs_per_batch + img_id
                 
+                # if 'llff' in dataset.source_path:
+                #     matching_index = next((i for i, name in enumerate(orig_files) if trainCameras[img_id].image_name in name), None)
+                #     img_name = cur_files[matching_index].split('.')[0]
                 img_name = trainCameras[img_id].image_name
                 img_path = str(Path(args.outdir)) + '/' + img_name + f'_step_{3-int(iteration)}.png'
                 try:

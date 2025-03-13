@@ -9,22 +9,13 @@ import time
 # scenes = ["bicycle", "bonsai", "counter", "flowers", "garden", "stump", "treehill", "kitchen", "room"]
 # factors = [4, 2, 2, 4, 4, 4, 4, 2, 2]
 
-# scenes = ["bonsai", "counter", "flowers", "garden", "stump", "treehill", "kitchen"]
-# factors = [16, 16, 16, 16, 16, 16, 16]
-# factors = [4,2,4,2,4,2,4,2,4,2,4,2,4,2,4,2,4,2,4,2,4,2,4,2,4,2]#[8, 16, 8, 16, 8, 16,  8, 16, 8, 16, 8, 16, 8, 16,]
-scenes = ["fern", "flower", "fortress", "horns", "leaves", "orchids", "room", "trex"] #["fern", "flower", "fortress", "horns", "leaves", "orchids", "room", "trex" ] #"fern", 
-factors = [2,2,2,2,2,2,2,2] #[2,2,2,2,2,2,2,2] #[8, 8,8,8,8,8,8,8]
+scenes = ["chair", "drums", "ficus", "hotdog", "lego", "materials", "mic", "ship"]
+# scenes = [ "mic", "ship"]
+factors = [1,1,1,1,1,1,1,1]
 
-####################################
-# Status Check *******************
-# Run original data 
-# Run Stable SR data (v)
-# Run proposed SR data
-# Run bicubic data 
-####################################
-
+# scenes = ["chair"]
+# factors = [4]
 excluded_gpus = set([])
-os.environ["NUM_ITERS"] = '30000'
 
 dry_run = False
 
@@ -35,54 +26,41 @@ def train_scene(gpu, scene, factor):
     # Folder information
     ####################################
     # ------------ Dataset folder
-    # dataset = "/fs/nexus-projects/dyn3Dscene/Codes/data/my_new_resize"
-    # dataset = "/fs/nexus-projects/dyn3Dscene/Codes/data/bicubic"
-    # dataset = "/fs/nexus-projects/dyn3Dscene/Codes/data/proposed"
-    dataset_gt = "/fs/nexus-projects/dyn3Dscene/Codes/datasets/nerf_llff_data"
-    dataset = "/fs/nexus-projects/dyn3Dscene/Codes/datasets/llff/StableSR"
-    # dataset_gt = "/fs/nexus-projects/dyn3Dscene/Codes/datasets/mipnerf360"
-    # ------------ Output folder
     # Original data
-    # output_dir = f"/fs/nexus-projects/dyn3Dscene/Codes/mip-splatting-mine/outputs/llff/orig_new/input_DS_{int(factor)}"
+    # dataset = "/fs/nexus-projects/dyn3Dscene/Codes/datasets/nerf_synthetic/resized"    
     # Stable SR data
-    output_dir = f"/fs/nexus-projects/dyn3Dscene/Codes/mip-splatting-mine/outputs/llff/StableSR/input_DS_{int(factor)}"
-    # output_dir = f"/fs/nexus-projects/dyn3Dscene/Codes/mip-splatting-mine/outputs/independent_SR/llff/StableSR/input_DS_{int(factor)}"
-    # Proposed SR data
-    # output_dir = f"/fs/nexus-projects/dyn3Dscene/Codes/mip-splatting-mine/outputs/proposed_SR/x4_upsample_to_DS_{int(factor)}_3DGS_iter_2000_fidelity_ratio_0.5"
-    # Bicubic data
-    # output_dir = f"/fs/nexus-projects/dyn3Dscene/Codes/mip-splatting-mine/outputs/bicubic/x4_upsample_to_DS_{int(factor)}"
+    dataset = "/fs/nexus-projects/dyn3Dscene/Codes/datasets/nerf_synthetic/StableSR/resized_4"
+    
+    gt_dataset = "/fs/nexus-projects/dyn3Dscene/Codes/datasets/nerf_synthetic/resized"
+    # ------------ Output folder
+    output_dir = f"/fs/nexus-projects/dyn3Dscene/Codes/mip-splatting-mine/outputs/nerf_synthetic/StableSR/input_DS_{int(factor)}"
     
     
-
     ####################################
     # Training command
-    ###################################
-    cmd = f"OMP_NUM_THREADS=4 CUDA_VISIBLE_DEVICES={gpu} python train.py -s {dataset}/{scene} -m {output_dir}/{scene} --eval -r {factor} --port {6009+int(gpu)} --kernel_size 0.1 --output_folder {output_dir}/{scene}"
+    ####################################
+    cmd = f"OMP_NUM_THREADS=4 CUDA_VISIBLE_DEVICES={gpu} python train.py -s {dataset}/{scene} -m {output_dir}/{scene} --eval -r {factor} --port {6010+int(gpu)} --kernel_size 0.1 --output_folder {output_dir}/{scene}"
     print(cmd)
     if not dry_run:
         os.system(cmd)
 
-    # ####################################
-    # # Rendering command
-    # ####################################
+    ####################################
+    # Rendering command
+    ####################################
     cmd = f"OMP_NUM_THREADS=4 CUDA_VISIBLE_DEVICES={gpu} python render.py -m {output_dir}/{scene} -r {int(factor)} --data_device cpu --skip_train"
     print(cmd)
     if not dry_run:
         os.system(cmd)
     
-    # cmd = f"OMP_NUM_THREADS=4 CUDA_VISIBLE_DEVICES={gpu} python render.py -m {output_dir}/{scene} -r {int(factor*4)} --data_device cpu --skip_train"
-    # print(cmd)
-    # if not dry_run:
-    #     os.system(cmd)
-    
     ####################################
     # Evaluation command
     ####################################
-    cmd = f"OMP_NUM_THREADS=4 CUDA_VISIBLE_DEVICES={gpu} python metrics.py -m {output_dir}/{scene} -g {dataset_gt}/{scene}"    
+    cmd = f"OMP_NUM_THREADS=4 CUDA_VISIBLE_DEVICES={gpu} python metrics.py -m {output_dir}/{scene} -g {gt_dataset}/{scene}"    
     print(cmd)
     if not dry_run:
         os.system(cmd)
     return True
+
 
 
 def worker(gpu, scene, factor):

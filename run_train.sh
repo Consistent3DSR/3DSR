@@ -23,9 +23,7 @@
 # python scripts/run_mipnerf360.py
 
 
-export NUM_ITERS=200;
-export CONSEC_TIMESTEPS=1;
-# export NUM_INFERENCE_STEPS=30;
+export NUM_ITERS=30000;
 python scripts/run_mipnerf360.py
 
 # export NUM_ITERS=50;

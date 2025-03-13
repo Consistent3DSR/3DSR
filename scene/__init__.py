@@ -36,20 +36,23 @@ class Scene:
             else:
                 self.loaded_iter = load_iteration
             print("Loading trained model at iteration {}".format(self.loaded_iter))
-
+        
         self.train_cameras = {}
         self.test_cameras = {}
-        # import pdb; pdb.set_trace()
+        
+        # try:
         if os.path.exists(os.path.join(args.source_path, "sparse")):
             scene_info = sceneLoadTypeCallbacks["Colmap"](args.source_path, args.images, args.eval, resolution=args.resolution, train_tiny=train_tiny)
         elif os.path.exists(os.path.join(args.source_path, "transforms_train.json")):
             print("Found transforms_train.json file, assuming Blender data set!")
-            scene_info = sceneLoadTypeCallbacks["Blender"](args.source_path, args.white_background, args.eval)
+            scene_info = sceneLoadTypeCallbacks["Blender"](args.source_path, args.white_background, args.eval, resolution=args.resolution)
         elif os.path.exists(os.path.join(args.source_path, "metadata.json")):
             print("Found metadata.json file, assuming multi scale Blender data set!")
             scene_info = sceneLoadTypeCallbacks["Multi-scale"](args.source_path, args.white_background, args.eval, args.load_allres)
         else:
-            assert False, "Could not recognize scene type!"       
+            assert False, "Could not recognize scene type!"
+        # except:
+        #     import pdb; pdb.set_trace()
             
         print("Loading Scene -------------------") 
         if not self.loaded_iter:

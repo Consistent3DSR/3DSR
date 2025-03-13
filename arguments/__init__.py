@@ -13,7 +13,8 @@ from argparse import ArgumentParser, Namespace
 import sys
 import os
 
-num_iters = int(os.environ["NUM_ITERS"])
+num_iters = int(os.environ["NUM_ITERS"]) if "NUM_ITERS" in os.environ else 30000
+white_background = True if "WHITE_BACKGROUND" in os.environ and os.environ["WHITE_BACKGROUND"] == "True" else False
 
 class GroupParams:
     pass
@@ -53,7 +54,7 @@ class ModelParams(ParamGroup):
         self._model_path = ""
         self._images = "images"
         self._resolution = -1
-        self._white_background = False
+        self._white_background = white_background
         self.data_device = "cuda"
         self.eval = False
         self._kernel_size = 0.1
@@ -91,7 +92,7 @@ class OptimizationParams(ParamGroup):
         self.lambda_dssim = 0.2
         self.densification_interval = 100
         self.opacity_reset_interval = 3000
-        self.densify_from_iter = 500
+        self.densify_from_iter = 500 #1000 #500
         self.densify_until_iter = 15_000
         self.densify_grad_threshold = 0.0002
         super().__init__(parser, "Optimization Parameters")

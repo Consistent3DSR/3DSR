@@ -6,11 +6,11 @@ from concurrent.futures import ThreadPoolExecutor
 import queue
 import time
 
-# scenes = ["bicycle", "bonsai", "counter", "flowers", "garden", "stump", "treehill", "kitchen", "room"]
-# factors = [4, 2, 2, 4, 4, 4, 4, 2, 2]
+# scenes = [ "counter", "flowers", "garden", "stump", "treehill", "kitchen", "room"]#["bicycle", "bonsai", "counter", "flowers", "garden", "stump", "treehill", "kitchen", "room"]
+# factors = [4, 4, 4, 4, 4, 4, 4]
 
-scenes = ["bicycle"]
-factors = [2] #[2, 4, 8, 16, 32] #[1, 2, 4, 8] #[1, 2, 4, 8, 16, 32]
+scenes = ['fern']#["drums", "ficus", "hotdog", "lego", "materials", "mic", "ship"] #["bicycle", "bonsai", "counter", "flowers", "garden", "stump", "treehill", "kitchen", "room"]
+factors = [2] # [4, 4, 4, 4, 4, 4, 4]
 
 excluded_gpus = set([])
 
@@ -19,41 +19,112 @@ dry_run = False
 jobs = list(zip(scenes, factors))
 
 def train_scene(gpu, scene, factor):
-    # output_dir = f"outputs/original_data/load_from_DS_1_then_resize/input_DS_{int(factor)}"
-    # output_dir = f"outputs/original_data/original_setting/input_DS_{int(factor)}"
-    # output_dir = f"/fs/nexus-projects/dyn3Dscene/Codes/mip-splatting/outputs/my_data/original_setting/input_DS_{int(factor)*4}"
-    # exp_dir = f"/fs/nexus-projects/dyn3Dscene/Codes/mip-splatting/outputs/mip-splatting-multiresolution/load_DS_{int(factor)*4}/apply_edge_aware_loss"
-    exp_dir = f"/fs/nexus-projects/dyn3Dscene/Codes/mip-splatting-mine/outputs/mip-splatting-multiresolution/load_DS_{int(factor) * 4}/train_proposed_DS_iter_200"
-    # exp_dir = '/fs/nexus-projects/dyn3Dscene/Codes/mip-splatting-mine/outputs/mip-splatting-multiresolution/load_DS_8/train_DS_2_two_view_gt'
-    output_dir = f"/fs/nexus-projects/dyn3Dscene/Codes/mip-splatting-mine/outputs/my_data/original_setting/input_DS_{int(factor) * 4}"
-
-    # cmd = f"OMP_NUM_THREADS=4 CUDA_VISIBLE_DEVICES={gpu} python visualize.py -m {output_dir}/{scene} -r {int(factors[0])} --data_device cpu --skip_train"
-    # print(cmd)    
-    # if not dry_run:
-    #     os.system(cmd)
+    ####################################
+    # Folder information
+    ####################################
+    # ------------ Dataset folder
+    dataset = "/fs/nexus-projects/dyn3Dscene/Codes/datasets/nerf_llff_data"
+    # dataset = "/fs/nexus-projects/dyn3Dscene/Codes/datasets/mipnerf360"
     
-    # # cmd = f"OMP_NUM_THREADS=4 CUDA_VISIBLE_DEVICES={gpu} python train.py -s /fs/nexus-projects/dyn3Dscene/Codes/data/{scene}_orig -m {output_dir}/{scene} --eval -r {factor} --port {6009+int(gpu)} --kernel_size 0.1 --output_folder {output_dir}/{scene}"
-    # cmd = f"OMP_NUM_THREADS=4 CUDA_VISIBLE_DEVICES={gpu} python train.py -s /fs/nexus-projects/dyn3Dscene/Codes/data/my_new_resize/{scene} -m {output_dir}/{scene} --eval -r {factor} --port {6009+int(gpu)} --kernel_size 0.1 --output_folder {output_dir}/{scene}"
+    # ------------ Loaded pretrained model folder
+    # output_dir = f"/fs/nexus-projects/dyn3Dscene/Codes/mip-splatting-mine/outputs/my_data/new_resize/original_setting/input_DS_{int(factor)*4}"
+    # output_dir = f"/fs/nexus-projects/dyn3Dscene/Codes/mip-splatting-mine/outputs/my_data/new_resize/original_setting/input_DS_{int(factor)}"
+    output_dir = f"/fs/nexus-projects/dyn3Dscene/Codes/mip-splatting-mine/outputs/my_data/new_resize/original_setting/input_DS_{int(factor)}"
+
+    # ------------ Current experiment folder
+    # Original data
+    # exp_dir = f"/fs/nexus-projects/dyn3Dscene/Codes/mip-splatting-mine/outputs/my_data/new_resize/original_setting/input_DS_{int(factor)*4}"
+    exp_dir = f"/fs/nexus-projects/dyn3Dscene/Codes/mip-splatting-mine/outputs/llff/proposed/load_DS_8/train_proposed_DS_2_fidelity_wt_1_iter_5000_stop_densify_2500_0305"
+    # Stable SR
+    # exp_dir = f"/fs/nexus-projects/dyn3Dscene/Codes/mip-splatting-mine/outputs/independent_SR/StableSR/original_setting/input_DS_{factor}"
+    # Proposed method
+    # exp_dir = f"/fs/nexus-projects/dyn3Dscene/Codes/mip-splatting-mine/outputs/mip-splatting-multiresolution/load_DS_{int(factor)*4}/train_proposed_DS_{int(factor)}_full_dataset_0226"
+    
+    ####################################
+    # Training command
+    ####################################
+    # Load preatrained model
+    # cmd = f"OMP_NUM_THREADS=4 CUDA_VISIBLE_DEVICES={gpu} python train.py -s {dataset}/{scene} -m {output_dir}/{scene} --eval -r {int(factor)} --port {6009+int(gpu)} --kernel_size 0.1 --output_folder {exp_dir} --load_pretrain"
+    # Train original
+    # cmd = f"OMP_NUM_THREADS=4 CUDA_VISIBLE_DEVICES={gpu} python train.py -s {dataset}/{scene} -m {output_dir}/{scene} --eval -r {int(factor)} --port {6009+int(gpu)} --kernel_size 0.1 --output_folder {exp_dir}"
     # print(cmd)
     # if not dry_run:
     #     os.system(cmd)
 
-    cmd = f"OMP_NUM_THREADS=4 CUDA_VISIBLE_DEVICES={gpu} python render.py -m {exp_dir}/{scene} -r 2 --data_device cpu --skip_train --train_tiny --interpolate"    
-    # cmd = f"OMP_NUM_THREADS=4 CUDA_VISIBLE_DEVICES={gpu} python render.py -m {exp_dir}/{scene} -r 8 --data_device cpu --skip_train --video"
-    print(cmd)    
+    ####################################
+    # Rendering command
+    ####################################
+    # cmd = f"OMP_NUM_THREADS=4 CUDA_VISIBLE_DEVICES={gpu} python render_debug.py -m {exp_dir}/{scene} -r 1 --data_device cpu --skip_train"
+    
+    # ---------- Render test data
+    cmd = f"OMP_NUM_THREADS=4 CUDA_VISIBLE_DEVICES={gpu} python render.py -m {exp_dir}/{scene} -r {factor} --data_device cpu --skip_train --iteration 5000"
+    # Render training data
+    # cmd = f"OMP_NUM_THREADS=4 CUDA_VISIBLE_DEVICES={gpu} python render.py -m {exp_dir}/{scene} -r 2 --data_device cpu --skip_test --train_tiny"
+    print(cmd)
     if not dry_run:
         os.system(cmd)
         
-    # cmd = f"OMP_NUM_THREADS=4 CUDA_VISIBLE_DEVICES={gpu} python render.py -m {exp_dir}/{scene} -r 2 --data_device cpu --skip_test --train_tiny --interpolate"
+    cmd = f"OMP_NUM_THREADS=4 CUDA_VISIBLE_DEVICES={gpu} python render.py -m {exp_dir}/{scene} -r {factor} --data_device cpu --skip_train --iteration 10000"
+    # Render training data
+    # cmd = f"OMP_NUM_THREADS=4 CUDA_VISIBLE_DEVICES={gpu} python render.py -m {exp_dir}/{scene} -r 2 --data_device cpu --skip_test --train_tiny"
+    print(cmd)
+    if not dry_run:
+        os.system(cmd)
+    
+    cmd = f"OMP_NUM_THREADS=4 CUDA_VISIBLE_DEVICES={gpu} python render.py -m {exp_dir}/{scene} -r {factor} --data_device cpu --skip_train --iteration 15000"
+    # Render training data
+    # cmd = f"OMP_NUM_THREADS=4 CUDA_VISIBLE_DEVICES={gpu} python render.py -m {exp_dir}/{scene} -r 2 --data_device cpu --skip_test --train_tiny"
+    print(cmd)
+    if not dry_run:
+        os.system(cmd)
+    
+    cmd = f"OMP_NUM_THREADS=4 CUDA_VISIBLE_DEVICES={gpu} python render.py -m {exp_dir}/{scene} -r {factor} --data_device cpu --skip_train --iteration 20000"
+    # Render training data
+    # cmd = f"OMP_NUM_THREADS=4 CUDA_VISIBLE_DEVICES={gpu} python render.py -m {exp_dir}/{scene} -r 2 --data_device cpu --skip_test --train_tiny"
+    print(cmd)
+    if not dry_run:
+        os.system(cmd)
+    
+    cmd = f"OMP_NUM_THREADS=4 CUDA_VISIBLE_DEVICES={gpu} python render.py -m {exp_dir}/{scene} -r {factor} --data_device cpu --skip_train --iteration 35000"
+    # Render training data
+    # cmd = f"OMP_NUM_THREADS=4 CUDA_VISIBLE_DEVICES={gpu} python render.py -m {exp_dir}/{scene} -r 2 --data_device cpu --skip_test --train_tiny"
+    print(cmd)
+    if not dry_run:
+        os.system(cmd)
+
+    cmd = f"OMP_NUM_THREADS=4 CUDA_VISIBLE_DEVICES={gpu} python render.py -m {exp_dir}/{scene} -r {factor} --data_device cpu --skip_train --iteration 37000"
+    # Render training data
+    # cmd = f"OMP_NUM_THREADS=4 CUDA_VISIBLE_DEVICES={gpu} python render.py -m {exp_dir}/{scene} -r 2 --data_device cpu --skip_test --train_tiny"
+    print(cmd)
+    if not dry_run:
+        os.system(cmd)
+    
+    # cmd = f"OMP_NUM_THREADS=4 CUDA_VISIBLE_DEVICES={gpu} python render.py -m {exp_dir}/{scene} -r {factor} --data_device cpu --skip_train"
+    # # Render training data
+    # # cmd = f"OMP_NUM_THREADS=4 CUDA_VISIBLE_DEVICES={gpu} python render.py -m {exp_dir}/{scene} -r 2 --data_device cpu --skip_test --train_tiny"
+    # print(cmd)
+    # if not dry_run:
+    #     os.system(cmd)
+    
+    # ---------- Render training data
+    # cmd = f"OMP_NUM_THREADS=4 CUDA_VISIBLE_DEVICES={gpu} python render.py -m {exp_dir}/{scene} -r {factor} --data_device cpu --skip_test"
+    # print(cmd)
+    # if not dry_run:
+    #     os.system(cmd)
+        
+    # ---------- Render interpolated views
+    # cmd = f"OMP_NUM_THREADS=4 CUDA_VISIBLE_DEVICES={gpu} python render.py -m {exp_dir}/{scene} -r 2 --data_device cpu --skip_train --train_tiny --interpolate"        
     # print(cmd)    
     # if not dry_run:
     #     os.system(cmd)
     
-    # cmd = f"OMP_NUM_THREADS=4 CUDA_VISIBLE_DEVICES={gpu} python metrics.py -m {exp_dir}/{scene} -g /fs/nexus-projects/dyn3Dscene/Codes/data/my_resize/{scene}"
-    # # cmd = f"OMP_NUM_THREADS=4 CUDA_VISIBLE_DEVICES={gpu} python metrics.py -m {output_dir}/{scene} -g /fs/nexus-projects/dyn3Dscene/Codes/data/{scene}"
-    # print(cmd)
-    # if not dry_run:
-    #     os.system(cmd)
+    ####################################
+    # Evaluation command
+    ####################################
+    cmd = f"OMP_NUM_THREADS=4 CUDA_VISIBLE_DEVICES={gpu} python metrics_synthetic.py -m {exp_dir}/{scene} -g {dataset}/{scene}"
+    print(cmd)
+    if not dry_run:
+        os.system(cmd)
     return True
 
 

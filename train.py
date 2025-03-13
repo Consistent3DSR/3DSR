@@ -29,6 +29,8 @@ from tqdm import tqdm
 from utils.image_utils import psnr
 from argparse import ArgumentParser, Namespace
 from arguments import ModelParams, PipelineParams, OptimizationParams
+from PIL import Image
+from utils.general_utils import PILtoTorch
 import torchvision
 try:
     # from torch.utils.tensorboard import SummaryWriter
@@ -60,16 +62,17 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
     tb_writer = prepare_output_and_logger(dataset)
     gaussians = GaussianModel(dataset.sh_degree)
     
-    if args.fidelity_train_en:
-        dataset2.source_path = dataset.source_path.split("_SR")[0]
-        dataset2.resolution = dataset.resolution * 4
-        gaussians2 = GaussianModel(dataset2.sh_degree)
-        scene2 = Scene(dataset2, gaussians2, shuffle=False)
+    # if args.fidelity_train_en:        
+    #     scene_name = os.path.basename(dataset.source_path)
+    #     dataset2.source_path = os.path.join('/fs/nexus-projects/dyn3Dscene/Codes/data/my_new_resize', scene_name)
+    #     dataset2.resolution = dataset.resolution * 4
+    #     gaussians2 = GaussianModel(dataset2.sh_degree)
+    #     scene2 = Scene(dataset2, gaussians2, shuffle=False)
 
-        trainCameras2 = scene2.getTrainCameras().copy()
-        testCameras2 = scene2.getTestCameras().copy()
-        allCameras2 = trainCameras2 + testCameras2
-        viewpoint_stack2 = None
+    #     trainCameras2 = scene2.getTrainCameras().copy()
+    #     testCameras2 = scene2.getTestCameras().copy()
+    #     allCameras2 = trainCameras2 + testCameras2
+    #     viewpoint_stack2 = None
     
     if args.load_pretrain:
         scene = Scene(dataset, gaussians, load_iteration=30000, shuffle=False, train_tiny=args.train_tiny)
@@ -110,7 +113,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
 
     bg_color = [1, 1, 1] if dataset.white_background else [0, 0, 0]
     background = torch.tensor(bg_color, dtype=torch.float32, device="cuda")
-
+    # import pdb; pdb.set_trace()
     iter_start = torch.cuda.Event(enable_timing = True)
     iter_end = torch.cuda.Event(enable_timing = True)
 
@@ -190,10 +193,10 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
 
         # Loss
         gt_image = viewpoint_cam.original_image.cuda()
+        # import pdb; pdb.set_trace()
         # sample gt_image with subpixel offset
         if dataset.resample_gt_image:
             gt_image = create_offset_gt(gt_image, subpixel_offset)
-
         # edge_aware_loss_en = False
         if args.edge_aware_loss_en:
             dx = torch.abs(image[:, :,1:] - image[:,:,:-1])
@@ -217,7 +220,6 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
         else:
             Ll1 = l1_loss(image, gt_image)
         loss = (1.0 - opt.lambda_dssim) * Ll1 + opt.lambda_dssim * (1.0 - ssim(image, gt_image))
-        
         # Save GT image
         # torchvision.utils.save_image(gt_image, os.path.join('gt.png'))
         
@@ -233,18 +235,15 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
         
         # Fidelity training
         if args.fidelity_train_en:
-            if not viewpoint_stack2:
-                viewpoint_stack2 = scene2.getTrainCameras().copy()
-            viewpoint_cam2 = viewpoint_stack2.pop(pop_id)
-            avg_pool = torch.nn.AvgPool2d(kernel_size=4, stride=4, padding=0)
-            img_small = avg_pool(image)
-            gt_img_small = view_point_cam2.original_image.cuda()
-            # torchvision.utils.save_image(img_small, "img_small.png")
-            # torchvision.utils.save_image(gt_img_small, "gt_img_small.png")
-            # torchvision.utils.save_image(image, "img.png")
-            # torchvision.utils.save_image(gt_image, "gt_img.png")
-            L1_2 = l1_loss(img_small, gt_img_small)
-            loss += (1.0 - opt.lambda_dssim) * L1_2 + opt.lambda_dssim * (1.0 - ssim(img_small, gt_img_small))
+            lr_resolution = dataset.resolution * 4
+            gt_folder = '/fs/nexus-projects/dyn3Dscene/Codes/data/my_new_resize'
+            scene_name = os.path.basename(dataset.source_path)
+            gt_path = os.path.join(gt_folder, scene_name, f'images_{lr_resolution}', viewpoint_cam.image_name+'.png')
+            image_gt_lr = Image.open(gt_path)
+            w_lr, h_lr = image_gt_lr.size
+            image_gt_lr = PILtoTorch(image_gt_lr, (w_lr, h_lr)).cuda()
+            image_lr = torch.nn.functional.interpolate(image.unsqueeze(0), scale_factor=0.25, mode='bicubic', antialias=True).squeeze(0)
+            loss += (1.0 - opt.lambda_dssim) * l1_loss(image_lr, image_gt_lr) + opt.lambda_dssim * (1.0 - ssim(image_lr, image_gt_lr))
         
        
         loss.backward()
@@ -403,7 +402,6 @@ if __name__ == "__main__":
     args.save_iterations.append(args.iterations)
     
     print("Optimizing " + args.model_path)
-    import pdb; pdb.set_trace()
     # Set up random seed
     torch.manual_seed(args.seed)
     random.seed(args.seed)
@@ -418,7 +416,7 @@ if __name__ == "__main__":
     # Start GUI server, configure and run training
     network_gui.init(args.ip, args.port)
     torch.autograd.set_detect_anomaly(args.detect_anomaly)
-
+    
     if args.fidelity_train_en:
         training(lp.extract(args), op.extract(args), pp.extract(args), args.test_iterations, args.save_iterations, args.checkpoint_iterations, args.start_checkpoint, args.debug_from, args, dataset2=lp.extract(args))
     else:

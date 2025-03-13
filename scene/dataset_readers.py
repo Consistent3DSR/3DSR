@@ -24,6 +24,8 @@ from utils.sh_utils import SH2RGB
 from scene.gaussian_model import BasicPointCloud
 import copy
 import pickle
+import natsort
+
 
 class CameraInfo(NamedTuple):
     uid: int
@@ -93,22 +95,60 @@ def readColmapCameras(cam_extrinsics, cam_intrinsics, images_folder):
             focal_length_y = intr.params[1]
             FovY = focal2fov(focal_length_y, height)
             FovX = focal2fov(focal_length_x, width)
+        elif intr.model == "SIMPLE_RADIAL":
+            focal_length_x = intr.params[0]  # f
+            FovY = focal2fov(focal_length_x, height)
+            FovX = focal2fov(focal_length_x, width)
         else:
             assert False, "Colmap camera model not handled: only undistorted datasets (PINHOLE or SIMPLE_PINHOLE cameras) supported!"
 
         image_path = os.path.join(images_folder, os.path.basename(extr.name))
         image_name = os.path.basename(image_path).split(".")[0]        
-
+        
+        if 'llff' in image_path:            
+            dir_name = os.path.dirname(images_folder)
+            base_name = os.path.basename(images_folder)    
+            # import pdb; pdb.set_trace()        
+            orig_folder =  os.path.join(dir_name, 'images')
+            orig_files = os.listdir(orig_folder)
+            orig_files = natsort.natsorted(orig_files)        
+            cur_files = os.listdir(images_folder)
+            cur_files = natsort.natsorted(cur_files)
+            if not len(cur_files) == len(orig_files):
+                import pdb; pdb.set_trace()
+                assert len(cur_files) == len(orig_files)
+            # import pdb; pdb.set_trace()
+            try:
+                matching_index = next((i for i, name in enumerate(orig_files) if image_name in name), None)
+                image_name = cur_files[matching_index].split('.')[0]
+            except:
+                import pdb; pdb.set_trace()
+            
+            image_path = os.path.join(images_folder, cur_files[matching_index])
         if not os.path.exists(image_path):
             dir_name = os.path.dirname(image_path)
             filename = os.path.basename(image_path).split(".")[0] + '.png'
-            if os.path.exists(os.path.join(dir_name, filename)):
-                image_path = os.path.join(dir_name, filename)
-
+            image_path = os.path.join(dir_name, filename)
+        # import pdb; pdb.set_trace()
         try:
             image = Image.open(image_path)
-        except:            
-            import pdb; pdb.set_trace()
+        except:
+            # try:
+            #     if 'llff' in image_path:
+            #         dir_name = os.path.dirname(images_folder)
+            #         base_name = os.path.basename(images_folder)
+            #         resolution = base_name.split('_')[-1]
+            #         orig_folder =  os.path.join(dir_name, 'images')
+            #         orig_files = os.listdir(orig_folder)
+            #         orig_files = natsort.natsorted(orig_files)
+                    
+            #         cur_files = os.listdir(images_folder)
+            #         cur_files = natsort.natsorted(cur_files)
+            #         matching_index = next((i for i, name in enumerate(orig_files) if extr.name in name), None)
+            #         image_path = os.path.join(images_folder, cur_files[matching_index])
+            #         image = Image.open(image_path)
+            # except:
+                import pdb; pdb.set_trace()
         # get rid of too many opened files
         image = copy.deepcopy(image)
         cam_info = CameraInfo(uid=uid, R=R, T=T, FovY=FovY, FovX=FovX, image=image,
@@ -157,8 +197,7 @@ def readColmapSceneInfo(path, images, eval, llffhold=8, resolution=1, train_tiny
     reading_dir = "images" if images == None else images
     # Jamie
     if resolution > 1:
-        reading_dir = reading_dir + f"_{resolution}"
-
+        reading_dir = reading_dir + f"_{resolution}"    
     # dataset_name = os.path.basename(path)
     # file_name = f"{dataset_name}_cam_infos_DS_{resolution}.json"
     # if os.path.exists(file_name):        
@@ -177,7 +216,7 @@ def readColmapSceneInfo(path, images, eval, llffhold=8, resolution=1, train_tiny
     else:
         train_cam_infos = cam_infos
         test_cam_infos = []
-
+    
     nerf_normalization = getNerfppNorm(train_cam_infos)
 
     ply_path = os.path.join(path, "sparse/0/points3D.ply")
@@ -218,7 +257,7 @@ def readColmapSceneInfo(path, images, eval, llffhold=8, resolution=1, train_tiny
     
     return scene_info
 
-def readCamerasFromTransforms(path, transformsfile, white_background, extension=".png"):
+def readCamerasFromTransforms(path, transformsfile, white_background, extension=".png", resolution=1, get_spiral=False):
     cam_infos = []
 
     with open(os.path.join(path, transformsfile)) as json_file:
@@ -226,9 +265,13 @@ def readCamerasFromTransforms(path, transformsfile, white_background, extension=
         fovx = contents["camera_angle_x"]
 
         frames = contents["frames"]
-        for idx, frame in enumerate(frames):
+        for idx, frame in enumerate(frames):            
+            # if resolution > 1:
+            #     folder_name = frame["file_path"].split("/")[1] + f"_{resolution}"
+            #     img_name = frame["file_path"].split("/")[2]
+            #     cam_name = os.path.join(path, folder_name, img_name + extension)
+            # else:
             cam_name = os.path.join(path, frame["file_path"] + extension)
-
             # NeRF 'transform_matrix' is a camera-to-world transform
             c2w = np.array(frame["transform_matrix"])
             # change from OpenGL/Blender camera axes (Y up, Z back) to COLMAP (Y down, Z forward)
@@ -260,11 +303,11 @@ def readCamerasFromTransforms(path, transformsfile, white_background, extension=
             
     return cam_infos
 
-def readNerfSyntheticInfo(path, white_background, eval, extension=".png"):
+def readNerfSyntheticInfo(path, white_background, eval, extension=".png", resolution=1):
     print("Reading Training Transforms")
-    train_cam_infos = readCamerasFromTransforms(path, "transforms_train.json", white_background, extension)
+    train_cam_infos = readCamerasFromTransforms(path, "transforms_train.json", white_background, extension, resolution=resolution)
     print("Reading Test Transforms")
-    test_cam_infos = readCamerasFromTransforms(path, "transforms_test.json", white_background, extension)
+    test_cam_infos = readCamerasFromTransforms(path, "transforms_test.json", white_background, extension, resolution=resolution)
     
     if not eval:
         train_cam_infos.extend(test_cam_infos)
@@ -340,7 +383,6 @@ def readMultiScale(path, white_background,split, only_highres=False):
         cam_infos.append(CameraInfo(uid=idx, R=R, T=T, FovY=FovY, FovX=FovX, image=image,
                         image_path=image_path, image_name=image_name, width=image.size[0], height=image.size[1]))
     return cam_infos
-
 
 def readMultiScaleNerfSyntheticInfo(path, white_background, eval, load_allres=False):
     print("Reading train from metadata.json")

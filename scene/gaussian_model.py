@@ -528,12 +528,16 @@ class GaussianModel:
         grads_abs = self.xyz_gradient_accum_abs / self.denom
         grads_abs[grads_abs.isnan()] = 0.0
         ratio = (torch.norm(grads, dim=-1) >= max_grad).float().mean()
-        Q = torch.quantile(grads_abs.reshape(-1), 1 - ratio)
+        # import pdb; pdb.set_trace()
+        # Q = torch.quantile(grads_abs.reshape(-1), 1 - ratio)
+        qqq = np.quantile(grads_abs.reshape(-1).cpu().numpy(), 1 - ratio.cpu().numpy())
         
         before = self._xyz.shape[0]
-        self.densify_and_clone(grads, max_grad, grads_abs, Q, extent)
+        # self.densify_and_clone(grads, max_grad, grads_abs, Q, extent)
+        self.densify_and_clone(grads, max_grad, grads_abs, qqq, extent)
         clone = self._xyz.shape[0]
-        self.densify_and_split(grads, max_grad, grads_abs, Q, extent)
+        # self.densify_and_split(grads, max_grad, grads_abs, Q, extent)
+        self.densify_and_split(grads, max_grad, grads_abs, qqq, extent)
         split = self._xyz.shape[0]
 
         prune_mask = (self.get_opacity < min_opacity).squeeze()
