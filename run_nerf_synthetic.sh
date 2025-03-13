@@ -1,0 +1,2 @@
+export WHITE_BACKGROUND=False;
+python scripts/run_mipnerf360_nerf_synthetic.py
