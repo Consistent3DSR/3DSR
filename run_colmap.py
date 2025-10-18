@@ -14,11 +14,12 @@ import natsort
 #     single_camera=True                # Assume all images use the same intrinsics
 # )
 from os import makedirs
-scenes = ["flower", "fortress", "horns", "leaves", "orchids", "room", "trex"]
+# scenes = ["flower", "fortress", "horns", "leaves", "orchids", "room", "trex"]
+scenes = ["Family", "Horse", "M60", "Panther", "Playground", "Train", "Truck"]
 
 for scene in scenes:
-    output_path = f'/fs/nexus-projects/dyn3Dscene/Codes/datasets/nerf_llff_data/{scene}/processed_2'
-    image_dir = f'/fs/nexus-projects/dyn3Dscene/Codes/datasets/nerf_llff_data/{scene}'
+    output_path = f'/fs/nexus-projects/dyn3Dscene/Codes/datasets/TanksAndTempleBG/{scene}/colmap'
+    image_dir = f'/fs/nexus-projects/dyn3Dscene/Codes/datasets/TanksAndTempleBG/{scene}/rgb'
 
     makedirs(output_path, exist_ok=True)
     mvs_path = f"{output_path}/mvs"

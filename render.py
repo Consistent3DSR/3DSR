@@ -30,7 +30,9 @@ import cv2
 import imageio
 import json
 from glob import glob
-import re
+import re, copy
+from utils.graphics_utils import getWorld2View2, getProjectionMatrix
+from scene.pose_utils import generate_ellipse_path, generate_spiral_path
 
 def load_json(file_path):
     with open(file_path, 'r') as file:
@@ -112,12 +114,18 @@ def render_set(model_path, name, iteration, views, gaussians, pipeline, backgrou
     makedirs(gts_path, exist_ok=True)
     
     for idx, view in enumerate(tqdm(views, desc="Rendering progress")):
-        if not os.path.exists(os.path.join(render_path, '{0:05d}'.format(idx) + ".png")):
+        # import pdb; pdb.set_trace()
+        # if not os.path.exists(os.path.join(render_path, '{0:05d}'.format(idx) + ".png")):
+        if not os.path.exists(os.path.join(render_path, view.image_name + ".png")):
             rendering = render(view, gaussians, pipeline, background, kernel_size=kernel_size)["render"]
             gt = view.original_image[0:3, :, :]
-            torchvision.utils.save_image(rendering, os.path.join(render_path, '{0:05d}'.format(idx) + ".png"))
-            torchvision.utils.save_image(gt, os.path.join(gts_path, '{0:05d}'.format(idx) + ".png"))
+            # torchvision.utils.save_image(rendering, os.path.join(render_path, '{0:05d}'.format(idx) + ".png"))
+            # torchvision.utils.save_image(gt, os.path.join(gts_path, '{0:05d}'.format(idx) + ".png"))
+            torchvision.utils.save_image(rendering, os.path.join(render_path, view.image_name + ".png"))
+            torchvision.utils.save_image(gt, os.path.join(gts_path, view.image_name + ".png"))
+            
 
+    print("Rendering completed to {}".format(render_path))
 
 def render_spiral(dataset : ModelParams, iteration : int, pipeline : PipelineParams, skip_train : bool, skip_test : bool, num_frames=15):
     with torch.no_grad():
@@ -164,9 +172,9 @@ def render_spiral(dataset : ModelParams, iteration : int, pipeline : PipelinePar
             rendering = render(cam_new, gaussians, pipeline, background, kernel_size=kernel_size)["render"]
             torchvision.utils.save_image(rendering, os.path.join(render_path,f'spiral_{i}.png'))
             video_writer.append_data((np.uint8(torch.clamp(rendering.cpu(), min=0, max=1.0).permute(1,2,0)*255)))
-            import pdb; pdb.set_trace()
+            # import pdb; pdb.set_trace()
         video_writer.close()
-        import pdb; pdb.set_trace()
+        # import pdb; pdb.set_trace()
 
 def render_interpolate(dataset : ModelParams, iteration : int, pipeline : PipelineParams, skip_train : bool, skip_test : bool, num_frames=15):
     with torch.no_grad():
@@ -390,22 +398,68 @@ def generate_spiral_trajectory(poses, num_frames=100, height_amplitude=0.2, num_
 
 # [Ting]
 @torch.no_grad()
-def render_scene_smooth_videos(dataset : ModelParams, iteration, pipeline : PipelineParams):
+def render_vis_videos(dataset : ModelParams, iteration, pipeline : PipelineParams):
     scale_factor = dataset.resolution
-    save_dir = '/fs/nexus-projects/dyn3Dscene/Codes/datasets/mipnerf360_RealBasicVSR'
+    render_path = os.path.join(dataset.model_path, f"ours_{iteration}", f"DS_{scale_factor}", f'vis_video')
+    makedirs(render_path, exist_ok=True)
+
+    gaussians = GaussianModel(dataset.sh_degree)
+    bg_color = [1,1,1] if dataset.white_background else [0, 0, 0]
+    background = torch.tensor(bg_color, dtype=torch.float32, device="cuda")
+    kernel_size = dataset.kernel_size
+    scene = Scene(dataset, gaussians, load_iteration=iteration, shuffle=False, train_tiny=args.train_tiny)
+    views = scene.getTestCameras()
+    view = copy.deepcopy(views[0])
+
+    if 'llff' in dataset.source_path:
+        render_poses = generate_spiral_path(np.load(dataset.source_path + '/poses_bounds.npy'))
+    else:
+        render_poses = generate_ellipse_path(views, n_frames=120)
+    
+    imgs = []
+    for idx, pose in enumerate(tqdm(render_poses)):
+        view.world_view_transform = torch.tensor(getWorld2View2(pose[:3, :3].T, pose[:3, 3], view.trans, view.scale)).transpose(0, 1).cuda()
+        view.full_proj_transform = (view.world_view_transform.unsqueeze(0).bmm(view.projection_matrix.unsqueeze(0))).squeeze(0)
+        view.camera_center = view.world_view_transform.inverse()[3, :3]
+        rendering = torch.clamp(render(view, gaussians, pipeline, background, kernel_size=kernel_size)["render"], min=0., max=1.)
+
+        torchvision.utils.save_image(rendering, os.path.join(render_path, f"{idx:04d}.png"))
+        imgs.append((rendering.permute(1, 2, 0).detach().cpu().numpy() * 255.).astype(np.uint8))
+    
+    create_video(imgs, 30, os.path.join(dataset.model_path, f"ours_{iteration}", f"DS_{scale_factor}", "vis_video"))
+
+# [Ting]
+@torch.no_grad()
+def render_scene_smooth_videos(dataset : ModelParams, iteration, pipeline : PipelineParams, render_gt_only=False):
+    dataset.resolution = 8
+    scale_factor = dataset.resolution
+    # save_dir = '/fs/nexus-projects/dyn3Dscene/Codes/datasets/mipnerf360_RealBasicVSR'
+    save_dir = os.path.join(dataset.model_path, 'rendering')
     scene_name = os.path.basename(dataset.source_path)
-    render_path = os.path.join(save_dir, scene_name, f"DS_{scale_factor}", f"ours")
-    gts_path = os.path.join(save_dir, scene_name, f"DS_{scale_factor}", f"test_gt")
+    render_path = os.path.join(save_dir, f"DS_{scale_factor}", f"ours")
+    gts_path = os.path.join(save_dir, f"DS_{scale_factor}", f"test_gt")
     makedirs(render_path, exist_ok=True)
     makedirs(gts_path, exist_ok=True)
+    print(f"========= Rendering to: {render_path}")
+
+    # fix
+    if render_gt_only:
+        gts_path = '/fs/nexus-projects/dyn3Dscene/Codes/datasets/mipnerf360_RealBasicVSR/room/DS_8/test_gt'
 
     gaussians = GaussianModel(dataset.sh_degree)
     # dataset.eval = False
     scene = Scene(dataset, gaussians, load_iteration=iteration, shuffle=False, train_tiny=args.train_tiny)
     print(scene.gaussians._xyz.shape)
     number = scene.gaussians._xyz.shape[0]
-    with open(f"{os.path.join(save_dir, scene_name, f'DS_{scale_factor}', 'number.txt')}", "w") as file:
-        file.write(str(number))
+
+    # with open('/fs/nexus-projects/dyn3Dscene/Codes/datasets/mipnerf360_RealBasicVSR/room/DS_8/number.txt', 'w') as file:
+    #     file.write(str(number))
+
+    # quit()
+
+    if not render_gt_only:
+        with open(f"{os.path.join(save_dir, f'DS_{scale_factor}', 'number.txt')}", "w") as file:
+            file.write(str(number))
 
     bg_color = [1,1,1] if dataset.white_background else [0, 0, 0]
     background = torch.tensor(bg_color, dtype=torch.float32, device="cuda")
@@ -416,7 +470,11 @@ def render_scene_smooth_videos(dataset : ModelParams, iteration, pipeline : Pipe
     views = train_views + test_views
 
     # sorted_views = sorted(views, key=lambda x: int(x.image_name.split('.')[0][4:]))
-    sorted_views = sorted(views, key=lambda x: int(x.image_name.split('.')[0][5:]))
+    try:
+        sorted_views = sorted(views, key=lambda x: int(x.image_name.split('.')[0][5:]))
+    except:
+        sorted_views = sorted(views, key=lambda x: int(x.image_name))
+        # import pdb; pdb.set_trace()
     test_views_imgname = [x.image_name for x in test_views]
 
     frame_id = 0    
@@ -442,6 +500,7 @@ def render_scene_smooth_videos(dataset : ModelParams, iteration, pipeline : Pipe
         "frames": []
     }
     # res_test = res.copy()
+    out_frames = []
 
     for idx in tqdm(range(len(sorted_views))):
         extrinsic = np.eye(4)
@@ -454,54 +513,96 @@ def render_scene_smooth_videos(dataset : ModelParams, iteration, pipeline : Pipe
         c2w[3, 3] = 1.0
         c2w = np.linalg.inv(c2w)
         c2w[:3, 1:3] *= -1
+        
+        # tan_fovx = np.tan(sorted_views[idx].FoVx / 2.0)
+        # tan_fovy = np.tan(sorted_views[idx].FoVy / 2.0)
+        # intrinsics = {
+        #     "camera_model": "PINHOLE",
+        #     "fl_x": sorted_views[idx].image_width* 4 / (2.0 * tan_fovx),
+        #     "fl_y": sorted_views[idx].image_height* 4 / (2.0 * tan_fovy),
+        #     "cx": sorted_views[idx].image_width * 2,
+        #     "cy": sorted_views[idx].image_height * 2,
+        #     "w": sorted_views[idx].image_width * 4,
+        #     "h": sorted_views[idx].image_height * 4,
+        #     "k1": 0.0,
+        #     "k2": 0.0,
+        #     "k3": 0.0,
+        #     "k4": 0.0,
+        #     "p1": 0.0,
+        #     "p2": 0.0,
+        # }
 
         if sorted_views[idx].image_name in test_views_imgname:
             res['frames'].append({
                 "file_path":f'gt/high_res_images/traj_0_{frame_id:04d}.png',
                 "transform_matrix": c2w.tolist(),
+                # "intrinsics": intrinsics,
             })
+            # import pdb; pdb.set_trace()
             # gt = sorted_views[idx].original_image[0:3, :, :]
             # gt = Image.open(f"/fs/nexus-projects/dyn3Dscene/Codes/data/my_new_resize/{scene_name}/images_{scale_factor//4}/{sorted_views[idx].image_name}.png")
             try:
-                gt = Image.open(f"/fs/nexus-projects/dyn3Dscene/Codes/datasets/nerf_llff_data/{scene_name}/images_{scale_factor//4}/{sorted_views[idx].image_name}.png")                
-            except:
-                try:
-                    gt = Image.open(f"/fs/nexus-projects/dyn3Dscene/Codes/datasets/nerf_llff_data/{scene_name}/images_{scale_factor//4}/{sorted_views[idx].image_name}.jpg")
-                except:
-                    import pdb; pdb.set_trace()
+                # image_folder = "images" if (scale_factor // 4) == 1 else f"images_{scale_factor//4}"
+                div = scale_factor // 4
+                image_folder = "images" if div in [0, 1] else f"images_{div}"
+                image_folder = "images_2"
+                gt_file_name = os.path.join(dataset.source_path, image_folder, f"{sorted_views[idx].image_name}.png")
+                gt = Image.open(gt_file_name)
+            except Exception as e:
+                print(f"❌ Failed to open ground truth image: {gt_file_name}")
+                print(f"Error: {e}")
                 # import pdb; pdb.set_trace()
+            # print(os.path.join(gts_path, f"traj_0_{frame_id:04d}.png"))
+            # quit()
             gt.save(os.path.join(gts_path, f"traj_0_{frame_id:04d}.png"))
             # torchvision.utils.save_image(gt, os.path.join(gts_path, f"traj_0_{frame_id:04d}.png"))
         else:
+            # import pdb; pdb.set_trace()
             res['frames'].append({
                 "file_path":f'images/{frame_id:04d}.png',
                 "transform_matrix": c2w.tolist(),
+                # "intrinsics": intrinsics,
             })
-
+        
         if idx < len(sorted_views)-1:
             poses = np.zeros((2, 3, 4))
             poses[:,:,:-1] = np.stack([sorted_views[idx].R, sorted_views[idx+1].R])
             poses[:,:,-1] = np.stack([sorted_views[idx].T, sorted_views[idx+1].T])
             render_poses = generate_interpolated_path(poses, n_interp=4, spline_degree=5, smoothness=.03, rot_weight=.1)
-
+            # import pdb; pdb.set_trace()
             for i in range(len(render_poses)):
                 R = render_poses[i, :, :3]
                 T = render_poses[i, :, 3]
-                FoVx = sorted_views[0].FoVx
-                FoVy = sorted_views[0].FoVy
-                trans = sorted_views[0].trans
-                data_device = sorted_views[0].data_device
-                scale = sorted_views[0].scale
+                FoVx = sorted_views[idx].FoVx
+                FoVy = sorted_views[idx].FoVy
+                trans = sorted_views[idx].trans
+                data_device = sorted_views[idx].data_device
+                scale = sorted_views[idx].scale                
                 image = torch.zeros(sorted_views[0].original_image.shape, device=data_device)
-                cam = Camera(colmap_id=1, R=R, T=T, FoVx=FoVx, FoVy=FoVy, image_name="", uid=idx, trans=trans, data_device=data_device, scale=scale, image=image, gt_alpha_mask=None)
-                rendering = render(cam, gaussians, pipeline, background, kernel_size=kernel_size)["render"]
-                torchvision.utils.save_image(rendering, os.path.join(render_path, f"{frame_id:04d}.png"))
+                if not render_gt_only:
+                    cam = Camera(colmap_id=1, R=R, T=T, FoVx=FoVx, FoVy=FoVy, image_name="", uid=idx, trans=trans, data_device=data_device, scale=scale, image=image, gt_alpha_mask=None)
+                    rendering = render(cam, gaussians, pipeline, background, kernel_size=kernel_size)["render"]
+                    torchvision.utils.save_image(rendering, os.path.join(render_path, f"{frame_id:04d}.png"))
+                    # out = Image.fromarray(np.uint8(rendering.clamp(0,1).permute(1, 2, 0).detach().cpu().numpy() * 255.))
+                    out_frames.append(np.uint8(rendering.clamp(0,1).permute(1, 2, 0).detach().cpu().numpy() * 255.))
                 frame_id += 1
         else:
-            rendering = render(sorted_views[-1], gaussians, pipeline, background, kernel_size=kernel_size)["render"]
-            torchvision.utils.save_image(rendering, os.path.join(render_path, f"{frame_id:04d}.png"))
-
-    transform_path = f"/fs/nexus-projects/dyn3Dscene/Codes/datasets/mipnerf360_RealBasicVSR/{scene_name}/DS_{scale_factor}/transforms.json"
+            if not render_gt_only:
+                rendering = render(sorted_views[-1], gaussians, pipeline, background, kernel_size=kernel_size)["render"]
+                torchvision.utils.save_image(rendering, os.path.join(render_path, f"{frame_id:04d}.png"))
+    
+    # if render_gt_only:
+    #     return
+    
+    # out_video_path = os.path.join(render_path, f"video_{scale_factor}.mp4")
+    # with imageio.get_writer(out_video_path, fps=10) as writer:
+    #     print(f"====== Saved video to {out_video_path}")
+    #     for frame in out_frames:
+    #         writer.append_data(frame)
+        
+    # transform_path = f"/fs/nexus-projects/dyn3Dscene/Codes/datasets/mipnerf360_RealBasicVSR/{scene_name}/DS_{scale_factor}/transforms.json"
+    transform_path = os.path.join(save_dir, f"DS_{scale_factor}", "transforms.json")
+    print(f"------ Saving transforms to {transform_path}")
     with open(transform_path, 'w+') as f:
         json.dump(res, f, indent=4)
     # transform_path = f"/fs/nexus-projects/dyn3Dscene/Codes/datasets/mipnerf360_RealBasicVSR/{scene_name}/DS_{scale_factor}/transforms_test.json"
@@ -633,7 +734,7 @@ def render_scene_smooth_videos_yt(dataset : ModelParams, iteration, pipeline : P
     for img_path in tqdm(sorted_filenames):
         img = np.array(Image.open(img_path), dtype=np.uint8)
         imgs.append(img)
-    create_video(imgs, 30, os.path.join(save_dir, scene_name, f"DS_{scale_factor}", "video"))
+    create_video(imgs, 10, os.path.join(save_dir, scene_name, f"DS_{scale_factor}", "video"))
     # transform_path = f"/fs/nexus-projects/dyn3Dscene/Codes/datasets/mipnerf360_RealBasicVSR/{scene_name}/DS_{scale_factor}/transforms_test.json"
     # with open(transform_path, 'w+') as f:
     #     json.dump(res_test, f, indent=4)
@@ -644,6 +745,7 @@ def create_video(imgs, fps, name):
         writer.append_data(img)
 
     writer.close()
+    print(f"====== Saved video to {name}.mp4")
 
 if __name__ == "__main__":
     # Set up command line argument parser
@@ -655,11 +757,13 @@ if __name__ == "__main__":
     parser.add_argument("--skip_test", action="store_true")
     parser.add_argument("--quiet", action="store_true")
     parser.add_argument("--video", action="store_true")
+    parser.add_argument("--vis_video", action="store_true")
     parser.add_argument("--video_spiral", action="store_true")
     parser.add_argument("--video_yt", action="store_true")
     parser.add_argument("--train_tiny", action="store_true")
     parser.add_argument("--interpolate", action="store_true")
     parser.add_argument("--stream", action="store_true")
+    parser.add_argument("--render_gt_only", action="store_true")
     args = get_combined_args(parser)
     print("Rendering " + args.model_path)
 
@@ -692,13 +796,16 @@ if __name__ == "__main__":
     safe_state(args.quiet)    
     
     if args.video:
-        render_scene_smooth_videos(model.extract(args), args.iteration, pipeline.extract(args))
+        render_scene_smooth_videos(model.extract(args), args.iteration, pipeline.extract(args), render_gt_only=args.render_gt_only)
         # render_video(model.extract(args), args.iteration, pipeline.extract(args), args.skip_train, args.skip_test)
+    elif args.vis_video:
+        render_vis_videos(model.extract(args), args.iteration, pipeline.extract(args))
     elif args.video_yt:
         render_scene_smooth_videos_yt(model.extract(args), args.iteration, pipeline.extract(args))
     elif args.video_spiral:
         render_spiral(model.extract(args), args.iteration, pipeline.extract(args), args.skip_train, args.skip_test,num_frames=100)
-    elif args.interpolate and args.train_tiny:
+    # elif args.interpolate and args.train_tiny:
+    elif args.interpolate:
         print("Rendering interpolated view ----------")
         render_interpolate(model.extract(args), args.iteration, pipeline.extract(args), args.skip_train, args.skip_test)
     else:

@@ -101,7 +101,8 @@ def camera_to_JSON(id, camera : Camera):
 # Constants for generate_spiral_path():
 NEAR_STRETCH = .9  # Push forward near bound for forward facing render path.
 FAR_STRETCH = 5.  # Push back far bound for forward facing render path.
-FOCUS_DISTANCE = .75  # Relative weighting of near, far bounds for render path.
+# FOCUS_DISTANCE = .75  # Relative weighting of near, far bounds for render path.
+FOCUS_DISTANCE = .5  # Relative weighting of near, far bounds for render path.
 
 def focus_point_fn(poses):
     """Calculate nearest point to all focal axes in poses."""
@@ -300,7 +301,7 @@ def generate_interpolated_path(poses, n_interp, spline_degree=5,
     return points_to_poses(new_points)
 
 
-def generate_spiral_path(poses, bounds, n_frames=120, n_rots=2, zrate=.5):
+def generate_spiral_path(poses, bounds, n_frames=120, n_rots=2, zrate=.5): # tune zrate
     """Calculates a forward facing spiral path for rendering."""
     # Find a reasonable 'focus depth' for this dataset as a weighted average
     # of conservative near and far bounds in disparity space.
@@ -311,21 +312,23 @@ def generate_spiral_path(poses, bounds, n_frames=120, n_rots=2, zrate=.5):
 
     # Get radii for spiral path using 90th percentile of camera positions.
     positions = poses[:, :3, 3]
-    radii = np.percentile(np.abs(positions), 90, 0)
+    radii = np.percentile(np.abs(positions), 90, 0) # tune
     radii = np.concatenate([radii, [1.]])
 
     # Generate poses for spiral path.
     render_poses = []
     cam2world = average_pose(poses)
     up = poses[:, :3, 1].mean(0)
+    import pdb; pdb.set_trace()
     for theta in np.linspace(0., 2. * np.pi * n_rots, n_frames, endpoint=False):
         t = radii * [np.cos(theta), -np.sin(theta), -np.sin(theta * zrate), 1.]
         position = cam2world @ t
         lookat = cam2world @ [0, 0, -focal, 1.]
         z_axis = position - lookat
         render_poses.append(viewmatrix(z_axis, up, position))
+        import pdb; pdb.set_trace()
     render_poses = np.stack(render_poses, axis=0)
-    import pdb; pdb.set_trace()
+    # import pdb; pdb.set_trace()
     return render_poses
 
 

@@ -8,10 +8,26 @@ import time
 from pathlib import Path
 
 # scenes = ["bicycle", "bonsai", "counter", "flowers", "garden", "stump", "treehill", "kitchen", "room"]
+# scenes = ["counter", "flowers", "stump", "treehill", "room"]
 # factors = [4, 2, 2, 4, 4, 4, 4, 2, 2]
 
-scenes = ["bicycle"]
-factors = [4] #[2, 4, 8]
+# scenes = [ "kitchen", "room"]
+# scenes = ["Aqua", "Bedroom", "Boats", "Bridge", "CreepyAttic", "Hugo-1", "Library", "Museum-1", 
+        #   "Museum-2", "NightSnow", "Playroom", "Ponche", "SaintAnne", "Shed", "Street-10", 
+        #   "Tree-18", "Yellowhouse-12"]
+# scenes = ["Bedroom", "Boats", "Bridge", "CreepyAttic", "Hugo-1", "Library", "Museum-1", 
+#           "Museum-2", "NightSnow", "Playroom", "Ponche", "SaintAnne", "Shed", "Street-10", 
+#           "Tree-18", "Yellowhouse-12"]
+# scenes = ["Family", "Horse", "M60", "Playground", "Train", "Truck", "Lighthouse"]
+
+scenes = ["fern", "flower", "fortress", "horns", "leaves", "orchids", "room", "trex"]
+# scenes = ["orchids", "fortress"]
+# scenes = ["fortress"]
+# scenes = ["horns", "leaves"]
+# scenes = ["orchids", "room", "trex"]
+# factors = [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1] #[2, 4, 8]
+factors = [2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2] #[2, 4, 8]
+# factors = [4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4] #[2, 4, 8]
 
 # num_iters = int(os.environ["NUM_ITERS"])
 # consecutive_timesteps = int(os.environ["CONSEC_TIMESTEPS"])
@@ -32,28 +48,41 @@ def train_scene(gpu, scene, factor):
     ####################################
     # Folder information
     ####################################
+    # dataset_name="deep_blending"
+    dataset_name="llff"
+    dataset = f"/fs/nexus-projects/dyn3Dscene/Codes/datasets/SR_results/SwinIR/nerf_llff_data" #/fs/nexus-projects/dyn3Dscene/Codes/datasets/{dataset_name}"
+    dataset_gt = "/fs/nexus-projects/dyn3Dscene/Codes/datasets/nerf_llff_data" #f"/fs/nexus-projects/dyn3Dscene/Codes/datasets/{dataset_name}"
+    
     # ------------ Dataset folder
-    dataset = "/fs/nexus-projects/dyn3Dscene/Codes/data/proposed"
-    dataset_gt = "/fs/nexus-projects/dyn3Dscene/Codes/data/my_new_resize"
+    # For mipnerf360
+    # dataset_name="mipnerf360"
+    # dataset = f"/fs/nexus-projects/dyn3Dscene/Codes/datasets/SR_results/StableSR/mipnerf360" #/fs/nexus-projects/dyn3Dscene/Codes/datasets/{dataset_name}"
+    # dataset_gt = "/fs/nexus-projects/dyn3Dscene/Codes/data/my_new_resize" #f"/fs/nexus-projects/dyn3Dscene/Codes/datasets/{dataset_name}"
     
     # ------------ Loaded pretrained model folder
     # output_dir = f"/fs/nexus-projects/dyn3Dscene/Codes/mip-splatting-mine/outputs/my_data/new_resize/original_setting/input_DS_{int(factor)*4}"
-    output_dir = f"/fs/nexus-projects/dyn3Dscene/Codes/mip-splatting-mine/outputs/my_data/new_resize/original_setting/input_DS_{int(factor)}"
+    output_dir = f"/fs/nexus-projects/dyn3Dscene/Codes/mip-splatting-mine/outputs/{dataset_name}/orig/input_DS_{int(factor)*4}"
 
     # ------------ Current experiment folder
     # Original data
     # exp_dir = f"/fs/nexus-projects/dyn3Dscene/Codes/mip-splatting-mine/outputs/my_data/new_resize/original_setting/input_DS_{factor}"
     # Stable SR
     # exp_dir = f"/fs/nexus-projects/dyn3Dscene/Codes/mip-splatting-mine/outputs/independent_SR/StableSR/original_setting/input_DS_{factor}"
-    # Proposed method
-    exp_dir = f"/fs/nexus-projects/dyn3Dscene/Codes/mip-splatting-mine/outputs/mip-splatting-multiresolution/load_DS_{int(factor)*4}/train_proposed_SR_DS_{int(factor)}_fidelity_ratio_1"
-    
+    # SRGS
+    exp_dir = f"/fs/nexus-projects/dyn3Dscene/Codes/mip-splatting-mine/outputs/{dataset_name}/SRGS_SwinIR/input_DS_{int(factor)}/no_pretrain"
+    # exp_dir = "/fs/nexus-projects/dyn3Dscene/Codes/mip-splatting-mine/outputs/llff/proposed/load_DS_8/train_proposed_DS_2_fidelity_wt_1_iter_5000_stop_densify_2500_0305"
+    # output_dir = exp_dir
+# Proposed method
+    # exp_dir = f"/fs/nexus-projects/dyn3Dscene/Codes/mip-splatting-mine/outputs/mip-splatting-multiresolution/load_DS_{int(factor)*4}/train_proposed_SR_DS_{int(factor)}_fidelity_ratio_1"
+    # exp_dir = f"/fs/nexus-projects/dyn3Dscene/Codes/mip-splatting-mine/outputs/{dataset_name}/load_DS_{int(factor)*4}/train_gt_0423"
     
     ####################################
     # Training command
     ####################################
     # Load preatrained model
-    cmd = f"OMP_NUM_THREADS=4 CUDA_VISIBLE_DEVICES={gpu} python train.py -s {dataset}/{scene} -m {output_dir}/{scene} --eval -r {int(factor)} --port {6009+int(gpu)} --kernel_size 0.1 --output_folder {exp_dir}  --fidelity_train_en --load_pretrain"
+    # cmd = f"OMP_NUM_THREADS=4 CUDA_VISIBLE_DEVICES={gpu} python train.py -s {dataset}/{scene} -m {output_dir}/{scene} --eval -r {int(factor)} --port {6008+int(gpu)} --kernel_size 0.1 --output_folder {exp_dir}  --fidelity_train_en --load_pretrain"
+    # cmd = f"OMP_NUM_THREADS=4 CUDA_VISIBLE_DEVICES={gpu} python train.py -s {dataset}/{scene} -m {output_dir}/{scene} --eval -r {int(factor)} --port {6005+int(gpu)} --kernel_size 0.1 --output_folder {exp_dir}  --subsample_en --downgrade_3dgs --load_pretrain"
+    cmd = f"OMP_NUM_THREADS=4 CUDA_VISIBLE_DEVICES={gpu} python train.py -s {dataset}/{scene} -m {output_dir}/{scene} --eval -r {int(factor)} --port {6005+int(gpu)} --kernel_size 0.1 --output_folder {exp_dir}  --subsample_en"
     # Train original
     # cmd = f"OMP_NUM_THREADS=4 CUDA_VISIBLE_DEVICES={gpu} python train.py -s {dataset}/{scene} -m {output_dir}/{scene} --eval -r {int(factor)} --port {6009+int(gpu)} --kernel_size 0.1 --output_folder {exp_dir}"
     print(cmd)
@@ -66,12 +95,12 @@ def train_scene(gpu, scene, factor):
     # cmd = f"OMP_NUM_THREADS=4 CUDA_VISIBLE_DEVICES={gpu} python render.py -m {output_dir}/{exp_dir}/{scene} -r 1 --data_device cpu --skip_train"
     
     # ---------- Render test data
-    # cmd = f"OMP_NUM_THREADS=4 CUDA_VISIBLE_DEVICES={gpu} python render.py -m {exp_dir}/{scene} -r {factor} --data_device cpu --skip_train"    
+    cmd = f"OMP_NUM_THREADS=4 CUDA_VISIBLE_DEVICES={gpu} python render.py -m {exp_dir}/{scene} -r {factor} --data_device cpu --skip_train"    
     # # Render training data
     # # cmd = f"OMP_NUM_THREADS=4 CUDA_VISIBLE_DEVICES={gpu} python render.py -m {exp_dir}/{scene} -r 2 --data_device cpu --skip_test --train_tiny"
-    # print(cmd)
-    # if not dry_run:
-    #     os.system(cmd)
+    print(cmd)
+    if not dry_run:
+        os.system(cmd)
     
     # Render training data
     # cmd = f"OMP_NUM_THREADS=4 CUDA_VISIBLE_DEVICES={gpu} python render.py -m {exp_dir}/{scene} -r 2 --data_device cpu --skip_test --train_tiny"
@@ -94,10 +123,11 @@ def train_scene(gpu, scene, factor):
     ####################################
     # Evaluation command
     ####################################
-    # cmd = f"OMP_NUM_THREADS=4 CUDA_VISIBLE_DEVICES={gpu} python metrics.py -m {exp_dir}/{scene} -g {dataset_gt}/{scene}"
-    # print(cmd)
-    # if not dry_run:
-    #     os.system(cmd)
+    cmd = f"OMP_NUM_THREADS=4 CUDA_VISIBLE_DEVICES={gpu} python metrics.py -m {exp_dir}/{scene} -g {dataset_gt}/{scene}"
+    
+    print(cmd)
+    if not dry_run:
+        os.system(cmd)
     
     return True
 

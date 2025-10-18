@@ -488,7 +488,10 @@ def training_with_iters(in_dict, dataset, opt, pipe, testing_iterations, saving_
         if dataset.resample_gt_image:
             gt_image = create_offset_gt(gt_image, subpixel_offset)
 
-        Ll1 = l1_loss(image, gt_image)
+        try:
+            Ll1 = l1_loss(image, gt_image)
+        except:
+            import pdb; pdb.set_trace()
         loss_hr = (1.0 - opt.lambda_dssim) * Ll1 + opt.lambda_dssim * (1.0 - ssim(image, gt_image))
         loss = loss_hr
         # import pdb; pdb.set_trace()
@@ -510,13 +513,15 @@ def training_with_iters(in_dict, dataset, opt, pipe, testing_iterations, saving_
         #         loss = (1.0 - args.lambda_hr) * loss_lr + args.lambda_hr * loss_hr
         if args.fidelity_train_en:
             lr_resolution = dataset.resolution * 4
-            if 'llff' in dataset.source_path:
-                gt_folder = '/fs/nexus-projects/dyn3Dscene/Codes/datasets/nerf_llff_data'
-            else:
-                gt_folder = '/fs/nexus-projects/dyn3Dscene/Codes/data/my_new_resize'
+            # if 'llff' in dataset.source_path:
+            #     gt_folder = '/fs/nexus-projects/dyn3Dscene/Codes/datasets/nerf_llff_data'
+            # else:
+            #     import pdb; pdb.set_trace()
+            #     gt_folder = '/fs/nexus-projects/dyn3Dscene/Codes/data/my_new_resize'
             # import pdb; pdb.set_trace()
-            scene_name = os.path.basename(dataset.source_path)
-            gt_path = os.path.join(gt_folder, scene_name, f'images_{lr_resolution}', viewpoint_cam.image_name+'.png')
+            # scene_name = os.path.basename(dataset.source_path)
+            # gt_path = os.path.join(gt_folder, scene_name, f'images_{lr_resolution}', viewpoint_cam.image_name+'.png')
+            gt_path = os.path.join(dataset.source_path, f'images_{lr_resolution}', viewpoint_cam.image_name+'.png')
             image_gt_lr = Image.open(gt_path)
             w_lr, h_lr = image_gt_lr.size
             image_gt_lr = PILtoTorch(image_gt_lr, (w_lr, h_lr)).cuda()
@@ -769,7 +774,7 @@ def train_proposed_2025(dataset, op, pipe, testing_iterations, saving_iterations
     scene = input_dict["scene"]
     trainCameras = scene.getTrainCameras()
     
-    GS_iters = [5000, 3000, 2000, 1000]
+    # GS_iters = [5000, 3000, 2000, 1000]
     # if 'llff' in dataset.source_path:
     #     dir_name = dataset.source_path
     #     lr_resolution = dataset.resolution * 4
@@ -788,7 +793,7 @@ def train_proposed_2025(dataset, op, pipe, testing_iterations, saving_iterations
         all_samples = list()        
         seed_everything(args.seed)
         
-        imgs_per_batch = 2
+        imgs_per_batch = batch_size
         loop_img_time = len(images_path) // imgs_per_batch
         one_more_time = (len(images_path) % imgs_per_batch) > 0        
         loop_img_time += int(one_more_time)
@@ -822,8 +827,10 @@ def train_proposed_2025(dataset, op, pipe, testing_iterations, saving_iterations
                     cur_image = cur_image.clamp(-1, 1)                    
                     im_lq_bs.append(cur_image) # 1 x c x h x w, [-1, 1]
                     im_path_bs.append(images_path_small[img_id]) # 1 x c x h x w, [-1, 1]                    
-                
-                im_lq_bs = torch.cat(im_lq_bs, dim=0)
+                try:
+                    im_lq_bs = torch.cat(im_lq_bs, dim=0)
+                except:
+                    import pdb; pdb.set_trace()
                 ori_h, ori_w = im_lq_bs.shape[2:]
                 ref_patch=None
                 if not (ori_h % 32 == 0 and ori_w % 32 == 0):
@@ -943,8 +950,7 @@ def train_proposed_2025(dataset, op, pipe, testing_iterations, saving_iterations
                                 img_name = str(Path(im_path_bs[img_id]).name)
                                 basename = os.path.splitext(os.path.basename(img_name))[0]
                                 outpath = str(Path(args.outdir)) + '/' + basename + f'_step_{3-int(iteration)}.png'
-                                print('Finished:', outpath)
-                                
+                                print('Finished:', outpath)                                
                                 
                                 Image.fromarray(im_sr[0, ].astype(np.uint8)).save(outpath)
                             
@@ -1042,9 +1048,351 @@ def train_proposed_2025(dataset, op, pipe, testing_iterations, saving_iterations
             input_dict = training_with_iters(input_dict, dataset, op, pipe, testing_iterations, saving_iterations,
                                             checkpoint_iterations, checkpoint, debug_from, args, dataset2, SR_iter=iteration,) 
             
-    op.iterations = 10000
-    input_dict = training_with_iters(input_dict, dataset, op, pipe, testing_iterations, saving_iterations,
-                                checkpoint_iterations, checkpoint, debug_from, args, dataset2, SR_iter=iteration,)
+    # op.iterations = 10000
+    # input_dict = training_with_iters(input_dict, dataset, op, pipe, testing_iterations, saving_iterations,
+    #                             checkpoint_iterations, checkpoint, debug_from, args, dataset2, SR_iter=iteration,)
+
+
+def train_proposed_202505(dataset, op, pipe, testing_iterations, saving_iterations, checkpoint_iterations, checkpoint, debug_from, args, dataset2=None):
+    #############################################
+    # load StableSR model and scheduler
+    #############################################
+    # Check input images
+    os.makedirs(args.outdir, exist_ok=True)
+    outpath = args.outdir
+    batch_size = args.n_samples
+    images_path_ori = sorted(glob.glob(os.path.join(args.init_img, "*")))
+    images_path = np.array(copy.deepcopy(images_path_ori))
+    
+    # Only taking training views for SR
+    # if not 'synthetic' in args.init_img:
+    #     llffhold = 8
+    #     all_indices = np.arange(len(images_path))
+    #     train_indices = all_indices % llffhold != 0
+    #     sr_indices = all_indices[train_indices]
+    #     images_path = images_path[sr_indices[:]]
+    
+    # for item in images_path_ori:
+    #     img_name = item.split('/')[-1]
+    #     if os.path.exists(os.path.join(outpath, img_name)):
+    #         print('******* Removed item:', img_name)
+    #         images_path.remove(item)
+    print(f"Found {len(images_path)} inputs.")
+    # import pdb; pdb.set_trace()
+    
+    out_dict = prepare_model(args)
+    model = out_dict['model']
+    device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+    sqrt_alphas_cumprod = copy.deepcopy(model.sqrt_alphas_cumprod)
+    sqrt_one_minus_alphas_cumprod = copy.deepcopy(model.sqrt_one_minus_alphas_cumprod)
+    
+    use_timesteps = set(space_timesteps(1000, [args.ddpm_steps]))
+    last_alpha_cumprod = 1.0
+    new_betas = []
+    timestep_map = []
+    for i, alpha_cumprod in enumerate(model.alphas_cumprod):
+        if i in use_timesteps:
+            new_betas.append(1 - alpha_cumprod / last_alpha_cumprod)
+            last_alpha_cumprod = alpha_cumprod
+            timestep_map.append(i)
+    new_betas = [beta.data.cpu().numpy() for beta in new_betas]
+    model.register_schedule(given_betas=np.array(new_betas), timesteps=len(new_betas))
+    model.num_timesteps = 1000
+    model.ori_timesteps = list(use_timesteps)
+    model.ori_timesteps.sort()
+    model = model.to(device)
+    
+    out_dict['model'] = model
+    out_dict['args'] = args
+    precision_scope = autocast if args.precision == "autocast" else nullcontext
+    
+    #############################################
+    # Loading scene and Gaussians
+    #############################################
+    # import pdb; pdb.set_trace()
+    op.densify_until_iter = args.densify_end
+    input_dict = prepare_training(dataset, op, pipe, testing_iterations, saving_iterations, checkpoint_iterations, checkpoint, debug_from, args, dataset2)
+    scene = input_dict["scene"]
+    trainCameras = scene.getTrainCameras()
+    
+    # GS_iters = [5000, 3000, 2000, 1000]
+    # if 'llff' in dataset.source_path:
+    #     dir_name = dataset.source_path
+    #     lr_resolution = dataset.resolution * 4
+        
+    #     orig_folder =  os.path.join(dir_name, 'images')
+    #     orig_files = os.listdir(orig_folder)
+    #     orig_files = natsort.natsorted(orig_files)
+        
+    #     cur_files = os.listdir( os.path.join(dir_name, f'images_{lr_resolution}'))
+    #     cur_files = natsort.natsorted(cur_files)        
+    #############################################
+    # Prepare for SR method
+    #############################################
+    with model.ema_scope():
+        tic = time.time()
+        all_samples = list()        
+        seed_everything(args.seed)
+        
+        imgs_per_batch = batch_size
+        loop_img_time = len(images_path) // imgs_per_batch
+        one_more_time = (len(images_path) % imgs_per_batch) > 0        
+        loop_img_time += int(one_more_time)
+      
+        #############################################
+        # Loop by denoising steps
+        #############################################
+        for iteration in range(args.ddpm_steps-1, -1, -1):
+            for loop_id in range(loop_img_time):
+                if loop_id == loop_img_time - 1:
+                    images_path_small = images_path[loop_id*imgs_per_batch:]
+                else:
+                    images_path_small = images_path[loop_id*imgs_per_batch : (loop_id+1)*imgs_per_batch]
+                
+                im_lq_bs = []
+                im_path_bs = []
+                for img_id in range(len(images_path_small)):
+                    try:
+                        cur_image = read_image(images_path_small[img_id])
+                    except:
+                        import pdb; pdb.set_trace()
+                    size_min = min(cur_image.size(-1), cur_image.size(-2))
+                    upsample_scale = max(args.input_size/size_min,
+                                         args.upscale)
+                    # cur_image = F.interpolate(
+                    #             cur_image,
+                    #             size=(int(cur_image.size(-2)*upsample_scale),
+                    #                     int(cur_image.size(-1)*upsample_scale)),
+                    #             mode='bicubic',
+                    #             )
+                    cur_image = cur_image.clamp(-1, 1)                    
+                    im_lq_bs.append(cur_image) # 1 x c x h x w, [-1, 1]
+                    im_path_bs.append(images_path_small[img_id]) # 1 x c x h x w, [-1, 1]                    
+                try:
+                    im_lq_bs = torch.cat(im_lq_bs, dim=0)
+                except:
+                    import pdb; pdb.set_trace()
+                ori_h, ori_w = im_lq_bs.shape[2:]
+                ref_patch=None
+                if not (ori_h % 32 == 0 and ori_w % 32 == 0):
+                    flag_pad = True
+                    pad_h = ((ori_h // 32) + 1) * 32 - ori_h
+                    pad_w = ((ori_w // 32) + 1) * 32 - ori_w
+                    im_lq_bs = F.pad(im_lq_bs, pad=(0, pad_w, 0, pad_h), mode='reflect')
+                else:
+                    flag_pad = False
+                    
+                if iteration != args.ddpm_steps - 1:
+                    #############################################
+                    # Load upsampled image, and encode to latent space
+                    #############################################
+                    imgs = []
+                    for img_id in range(len(im_path_bs)):
+                        img_name = str(Path(im_path_bs[img_id]).name)
+                        basename = os.path.splitext(os.path.basename(img_name))[0]
+                        # imgpath = str(Path(args.outdir)) + '/' + basename + f'_step_{3-int(iteration)-1}.png'
+                        training_folder = os.path.join(args.outdir, 'train_results')
+                        cur_id = loop_id * imgs_per_batch + img_id
+                        imgpath = os.path.join(training_folder, trainCameras[cur_id].image_name + f"_step_{3-int(iteration)-1}.png")
+                        
+                        # print('Load upsampled image and encode:', imgpath)
+                        # imgpath = str(Path(args.outdir)) + '/' + basename + f'_step_{3-int(iteration)-1}.png'
+                        # import pdb; pdb.set_trace()
+                        cur_image = read_image(imgpath)
+                        
+                        # Add padding to loaded image
+                        if not (ori_h % 32 == 0 and ori_w % 32 == 0):
+                            pad_h = ((ori_h // 32) + 1) * 32 - ori_h
+                            pad_w = ((ori_w // 32) + 1) * 32 - ori_w
+                            # im_lq_bs = F.pad(im_lq_bs, pad=(0, pad_w, 0, pad_h), mode='reflect')
+                            cur_image = F.pad(cur_image, pad=(0, pad_w, 0, pad_h), mode='reflect')
+                        imgs.append(cur_image)
+                    imgs = torch.cat(imgs, dim=0)
+                    
+                print("************** ITERATION", 3-iteration, "**************")
+                with torch.no_grad():
+                    with precision_scope("cuda"):
+                        #############################################
+                        # Start of loop for denoised images
+                        #############################################
+                        for img_id in range(len(im_path_bs)):
+                            #############################################
+                            # Split image to patches
+                            #############################################
+                            if im_lq_bs.shape[2] > args.vqgantile_size or im_lq_bs.shape[3] > args.vqgantile_size:
+                                im_spliter = ImageSpliterTh(im_lq_bs[img_id].unsqueeze(0), args.vqgantile_size, args.vqgantile_stride, sf=1)
+                                if iteration != args.ddpm_steps-1:
+                                    im_spliter_x_tilda = ImageSpliterTh(imgs[img_id].unsqueeze(0), args.vqgantile_size, args.vqgantile_stride, sf=1)
+                                #############################################
+                                # Loop to process each patch in an image   
+                                #############################################                         
+                                for im_lq_pch, index_infos in im_spliter:
+                                    if iteration == args.ddpm_steps-1:
+                                        init_latent = model.get_first_stage_encoding(model.encode_first_stage(im_lq_pch))  # move to latent space
+                                        text_init = ['']*args.n_samples
+                                        semantic_c = model.cond_stage_model(text_init)
+                                        noise = torch.randn_like(init_latent)
+                                        # If you would like to start from the intermediate steps, you can add noise to LR to the specific steps.
+                                        t = repeat(torch.tensor([999]), '1 -> b', b=im_lq_pch.size(0))
+                                        t = t.to(device).long()
+                                        # Apply the noise to the latent space (sqrt(alpha) * z + sqrt(1-alpha) * x) to create x_T
+                                        x_T = model.q_sample_respace(x_start=init_latent, t=t, sqrt_alphas_cumprod=sqrt_alphas_cumprod, 
+                                                sqrt_one_minus_alphas_cumprod=sqrt_one_minus_alphas_cumprod, noise=noise)
+                                        _, x0_head = model.sample_canvas_one_iter(iteration=iteration, cond=semantic_c, struct_cond=init_latent, 
+                                                                                    batch_size=im_lq_pch.size(0), timesteps=args.ddpm_steps, time_replace=args.ddpm_steps, 
+                                                                                    x_T=x_T, tile_size=int(args.input_size/8), tile_overlap=args.tile_overlap, 
+                                                                                    batch_size_sample=args.n_samples, return_x0=True)
+                                    else:
+                                        #############################################
+                                        # Encode image to latent space
+                                        #############################################
+                                        # import pdb; pdb.set_trace()
+                                        # torchvision.utils.save_image((imgs[1]+1)/2,'vis.png')
+                                        im_lq_pch_tilda, index_infos_tilda = next(im_spliter_x_tilda)
+                                        x0_tilda_latent = model.get_first_stage_encoding(model.encode_first_stage(im_lq_pch_tilda))  # move to latent space
+                                        text_init = ['']*args.n_samples
+                                        semantic_c = model.cond_stage_model(text_init)
+                                        init_latent = model.get_first_stage_encoding(model.encode_first_stage(im_lq_pch))  # move to latent space
+                                        x_T_1 = model.sample_canvas_one_iter(iteration=iteration+1, cond=semantic_c, struct_cond=init_latent, 
+                                                        batch_size=im_lq_pch.size(0), timesteps=args.ddpm_steps, time_replace=args.ddpm_steps, 
+                                                        x_T=x_T, tile_size=int(args.input_size/8), tile_overlap=args.tile_overlap, 
+                                                        batch_size_sample=args.n_samples, return_x0=False, x0_input=x0_tilda_latent)
+                                        # x_T = x_T_1.clone()
+                                        _, x0_head = model.sample_canvas_one_iter(iteration=iteration, cond=semantic_c, struct_cond=init_latent, 
+                                                                                    batch_size=im_lq_pch.size(0), timesteps=args.ddpm_steps, time_replace=args.ddpm_steps, 
+                                                                                    x_T=x_T_1, tile_size=int(args.input_size/8), tile_overlap=args.tile_overlap, 
+                                                                                    batch_size_sample=args.n_samples, return_x0=True)
+                                    # Decode the latent space to image space
+                                    vq_model = out_dict['vq_model']
+                                    _, enc_fea_lq = vq_model.encode(im_lq_pch)
+                                    x_samples = vq_model.decode(x0_head * 1. / model.scale_factor, enc_fea_lq)
+                                    
+                                    if args.colorfix_type == 'adain':
+                                        x_samples = adaptive_instance_normalization(x_samples, im_lq_pch)
+                                    elif args.colorfix_type == 'wavelet':
+                                        x_samples = wavelet_reconstruction(x_samples, im_lq_pch)
+                                    im_spliter.update_gaussian(x_samples, index_infos)
+
+                                im_sr = im_spliter.gather()
+                                im_sr = torch.clamp((im_sr+1.0)/2.0, min=0.0, max=1.0)
+                                
+                                if upsample_scale > args.upscale:
+                                    im_sr = F.interpolate(
+                                                im_sr,
+                                                size=(int(im_lq_bs.size(-2)*args.upscale/upsample_scale),
+                                                    int(im_lq_bs.size(-1)*args.upscale/upsample_scale)),
+                                                mode='bicubic',)
+                                    im_sr = torch.clamp(im_sr, min=0.0, max=1.0)
+                                
+                                if flag_pad:
+                                    im_sr = im_sr[:, :, :ori_h, :ori_w, ]
+
+                                im_sr = im_sr.cpu().numpy().transpose(0,2,3,1)*255   # b x h x w x c                                
+                                img_name = str(Path(im_path_bs[img_id]).name)
+                                basename = os.path.splitext(os.path.basename(img_name))[0]
+                                outpath = str(Path(args.outdir)) + '/' + basename + f'_step_{3-int(iteration)}.png'
+                                print('Finished:', outpath)                                
+                                
+                                Image.fromarray(im_sr[0, ].astype(np.uint8)).save(outpath)
+                            
+                            #############################################
+                            # Take the entire image as SR input (when input image is small enough)
+                            #############################################
+                            else:                          
+                                if iteration == args.ddpm_steps-1:
+                                    init_latent = model.get_first_stage_encoding(model.encode_first_stage(im_lq_bs[img_id].unsqueeze(0)))  # move to latent space
+                                    text_init = ['']*args.n_samples
+                                    semantic_c = model.cond_stage_model(text_init)
+                                    noise = torch.randn_like(init_latent)
+                                    # If you would like to start from the intermediate steps, you can add noise to LR to the specific steps.
+                                    t = repeat(torch.tensor([999]), '1 -> b', b=1)
+                                    t = t.to(device).long()
+                                    x_T = model.q_sample_respace(x_start=init_latent, t=t, sqrt_alphas_cumprod=sqrt_alphas_cumprod, sqrt_one_minus_alphas_cumprod=sqrt_one_minus_alphas_cumprod, noise=noise)
+                                    _, x0_head = model.sample_canvas_one_iter(iteration=iteration, cond=semantic_c, struct_cond=init_latent, 
+                                                                            batch_size=1, timesteps=args.ddpm_steps, time_replace=args.ddpm_steps, 
+                                                                            x_T=x_T, tile_size=int(args.input_size/8), tile_overlap=args.tile_overlap, 
+                                                                            batch_size_sample=args.n_samples, return_x0=True)
+                                else:
+                                    #############################################
+                                    # Encode image to latent space
+                                    #############################################
+                                    x0_tilda_latent = model.get_first_stage_encoding(model.encode_first_stage(imgs[img_id].unsqueeze(0)))  # move to latent space
+                                    text_init = ['']*args.n_samples
+                                    semantic_c = model.cond_stage_model(text_init)
+                                    init_latent = model.get_first_stage_encoding(model.encode_first_stage(im_lq_bs[img_id].unsqueeze(0)))  # move to latent space
+                                    # Get x_{t-1}
+                                    x_T_1 = model.sample_canvas_one_iter(iteration=iteration+1, cond=semantic_c, struct_cond=init_latent, 
+                                                    batch_size=1, timesteps=args.ddpm_steps, time_replace=args.ddpm_steps, 
+                                                    x_T=x_T, tile_size=int(args.input_size/8), tile_overlap=args.tile_overlap, 
+                                                    batch_size_sample=args.n_samples, return_x0=False, x0_input=x0_tilda_latent)
+                                    # Predict x0_head
+                                    _, x0_head = model.sample_canvas_one_iter(iteration=iteration, cond=semantic_c, struct_cond=init_latent, 
+                                                                                batch_size=1, timesteps=args.ddpm_steps, time_replace=args.ddpm_steps, 
+                                                                                x_T=x_T_1, tile_size=int(args.input_size/8), tile_overlap=args.tile_overlap, 
+                                                                                batch_size_sample=args.n_samples, return_x0=True)
+                                    
+                                vq_model = out_dict['vq_model']
+                                _, enc_fea_lq = vq_model.encode(im_lq_bs[img_id].unsqueeze(0))
+                                x_samples = vq_model.decode(x0_head * 1. / model.scale_factor, enc_fea_lq)
+                                if args.colorfix_type == 'adain':
+                                    x_samples = adaptive_instance_normalization(x_samples, im_lq_bs[img_id].unsqueeze(0))
+                                elif args.colorfix_type == 'wavelet':
+                                    x_samples = wavelet_reconstruction(x_samples, im_lq_bs[img_id].unsqueeze(0))
+                                im_sr = torch.clamp((x_samples+1.0)/2.0, min=0.0, max=1.0)
+                                if flag_pad:
+                                    im_sr = im_sr[:, :, :ori_h, :ori_w, ]
+
+                                im_sr = im_sr.cpu().numpy().transpose(0,2,3,1)*255   # b x h x w x c                                
+                                img_name = str(Path(im_path_bs[img_id]).name)
+                                basename = os.path.splitext(os.path.basename(img_name))[0]
+                                outpath = str(Path(args.outdir)) + '/' + basename + f'_step_{3-int(iteration)}.png'
+                                Image.fromarray(im_sr[0, ].astype(np.uint8)).save(outpath)
+                                print('Finished:', outpath)
+                                
+                                if iteration == 0:
+                                    final_sr_path = os.path.join(args.outdir, 'final_sr_results')
+                                    os.makedirs(final_sr_path, exist_ok=True)
+                                    outpath = final_sr_path + '/' + basename + f'.png'
+                                    Image.fromarray(im_sr[0, ].astype(np.uint8)).save(outpath)                        
+                    #############################################
+                    # End of loop for denoised images
+                    #############################################                
+            
+            #############################################
+            # Update ground truth image in trainCameras  
+            #############################################
+            for img_id in range(len(trainCameras)):
+                # If you read from the saved image, you can use the following code
+                # cam_id =  loop_id * imgs_per_batch + img_id
+                
+                # if 'llff' in dataset.source_path:
+                #     matching_index = next((i for i, name in enumerate(orig_files) if trainCameras[img_id].image_name in name), None)
+                #     img_name = cur_files[matching_index].split('.')[0]
+                img_name = trainCameras[img_id].image_name
+                img_path = str(Path(args.outdir)) + '/' + img_name + f'_step_{3-int(iteration)}.png'
+                try:
+                    img_transfer = Image.open(img_path).convert("RGB")
+                except:
+                    import pdb; pdb.set_trace()
+                width, height = img_transfer.size
+                loaded_image = PILtoTorch(img_transfer, (width, height)).cuda()
+                # print(img_path)
+                # torchvision.utils.save_image(loaded_image, 'vis.png')
+                # torchvision.utils.save_image(trainCameras[img_id].original_image, 'vis_2.png')
+                # import pdb; pdb.set_trace()
+                trainCameras[img_id].original_image = loaded_image.clone()
+            # #############################################
+            # # Train GS
+            # #############################################
+            # op.iterations = GS_iters[3-iteration]
+             
+            input_dict = training_with_iters(input_dict, dataset, op, pipe, testing_iterations, saving_iterations,
+                                            checkpoint_iterations, checkpoint, debug_from, args, dataset2, SR_iter=iteration,) 
+            
+    # op.iterations = 10000
+    # input_dict = training_with_iters(input_dict, dataset, op, pipe, testing_iterations, saving_iterations,
+    #                             checkpoint_iterations, checkpoint, debug_from, args, dataset2, SR_iter=iteration,)
+                 
                  
 def train_proposed(dataset, op, pipe, testing_iterations, saving_iterations, checkpoint_iterations, checkpoint, debug_from, args, dataset2=None):
     #############################################
@@ -1861,43 +2209,16 @@ def parse_args():
         default=512,
         help="input size",
     )
+    parser.add_argument('--render_HR_pretrain', action='store_true', default=False)
+    
     args = parser.parse_args(sys.argv[1:])
     args.save_iterations.append(args.iterations)
     
     return lp, op, pp, args
 
 if __name__ == "__main__":
-    # Set up command line argument parser
-    # parser = ArgumentParser(description="Training script parameters")
-    # lp = ModelParams(parser)
-    # op = OptimizationParams(parser)
-    # pp = PipelineParams(parser)
-    # parser.add_argument('--ip', type=str, default="127.0.0.1")
-    # parser.add_argument('--port', type=int, default=6009)
-    # parser.add_argument('--debug_from', type=int, default=-1)
-    # parser.add_argument('--detect_anomaly', action='store_true', default=False)
-    # parser.add_argument("--test_iterations", nargs="+", type=int, default=[7_000, 30_000])
-    # parser.add_argument("--save_iterations", nargs="+", type=int, default=[7_000, 30_000])
-    # parser.add_argument("--quiet", action="store_true")
-    # parser.add_argument("--checkpoint_iterations", nargs="+", type=int, default=[])
-    # parser.add_argument("--start_checkpoint", type=str, default = None)
-    # parser.add_argument("--output_folder", type=str)
-    # parser.add_argument("--load_pretrain", action="store_true")
-    # parser.add_argument("--freeze_point", action="store_true")
-    # parser.add_argument("--SR_GS", action="store_true")
-    # parser.add_argument("--fidelity_train_en", action="store_true")
-    # parser.add_argument("--musiq_train_en", action="store_true")
-    # parser.add_argument("--lpips_train_en", action="store_true")
-    # parser.add_argument("--prune_init_en", action="store_true")
-    # parser.add_argument("--seed", type=int, default=999)
-    # parser.add_argument("--train_tiny", action="store_true")
-    # parser.add_argument("--edge_aware_loss_en", action="store_true")
-    
-    # args = parser.parse_args(sys.argv[1:])
-    # args.save_iterations.append(args.iterations)
     lp, op, pp, args = parse_args()
     print("Optimizing " + args.model_path)
-    # import pdb; pdb.set_trace()
     # Set up random seed
     torch.manual_seed(args.seed)
     random.seed(args.seed)
@@ -1926,8 +2247,10 @@ if __name__ == "__main__":
         print('No color correction')
     print('>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>')
     
-    
-    # train_proposed(lp.extract(args), op.extract(args), pp.extract(args), args.test_iterations, args.save_iterations, args.checkpoint_iterations, args.start_checkpoint, args.debug_from, args)
-    train_proposed_2025(lp.extract(args), op.extract(args), pp.extract(args), args.test_iterations, args.save_iterations, args.checkpoint_iterations, args.start_checkpoint, args.debug_from, args)
+    if args.render_HR_pretrain:
+        train_proposed_202505(lp.extract(args), op.extract(args), pp.extract(args), args.test_iterations, args.save_iterations, args.checkpoint_iterations, args.start_checkpoint, args.debug_from, args)
+    else:
+        # train_proposed(lp.extract(args), op.extract(args), pp.extract(args), args.test_iterations, args.save_iterations, args.checkpoint_iterations, args.start_checkpoint, args.debug_from, args)
+        train_proposed_2025(lp.extract(args), op.extract(args), pp.extract(args), args.test_iterations, args.save_iterations, args.checkpoint_iterations, args.start_checkpoint, args.debug_from, args)
     # All done
     print("\nTraining complete.")

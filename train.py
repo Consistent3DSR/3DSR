@@ -12,6 +12,7 @@
 import os
 import numpy as np
 import open3d as o3d
+import torch.nn.functional as F
 import cv2
 import json
 import torch
@@ -32,6 +33,7 @@ from arguments import ModelParams, PipelineParams, OptimizationParams
 from PIL import Image
 from utils.general_utils import PILtoTorch
 import torchvision
+import time
 try:
     # from torch.utils.tensorboard import SummaryWriter
     from tensorboardX import SummaryWriter
@@ -127,7 +129,9 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
         if camera.image_width >= 800:
             highresolution_index.append(index)
 
-    gaussians.compute_3D_filter(cameras=trainCameras)
+    if not args.downgrade_3dgs:
+        # print("3D filter is used!!!!!!")
+        gaussians.compute_3D_filter(cameras=trainCameras)
 
     viewpoint_stack = None
     ema_loss_for_log = 0.0
@@ -174,9 +178,11 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
         pop_id = randint(0, len(viewpoint_stack)-1)
         viewpoint_cam = viewpoint_stack.pop(pop_id)
         
-        # Pick a random high resolution camera
-        if random.random() < 0.3 and dataset.sample_more_highres:
-            viewpoint_cam = trainCameras[highresolution_index[randint(0, len(highresolution_index)-1)]]
+        if not args.downgrade_3dgs:
+            # print("high resolution index used!!!")
+            # Pick a random high resolution camera
+            if random.random() < 0.3 and dataset.sample_more_highres:
+                viewpoint_cam = trainCameras[highresolution_index[randint(0, len(highresolution_index)-1)]]
             
         # Render
         if (iteration - 1) == debug_from:
@@ -188,9 +194,15 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             # subpixel_offset *= 0.0
         else:
             subpixel_offset = None
-        render_pkg = render(viewpoint_cam, gaussians, pipe, background, kernel_size=dataset.kernel_size, subpixel_offset=subpixel_offset)
-        image, viewspace_point_tensor, visibility_filter, radii = render_pkg["render"], render_pkg["viewspace_points"], render_pkg["visibility_filter"], render_pkg["radii"]
+        if args.downgrade_3dgs:
+            render_pkg = render(viewpoint_cam, gaussians, pipe, background)
+            image, viewspace_point_tensor, visibility_filter, radii = render_pkg["render"], render_pkg["viewspace_points"], render_pkg["visibility_filter"], render_pkg["radii"]
+        else:
+            render_pkg = render(viewpoint_cam, gaussians, pipe, background, kernel_size=dataset.kernel_size, subpixel_offset=subpixel_offset)
+            image, viewspace_point_tensor, visibility_filter, radii = render_pkg["render"], render_pkg["viewspace_points"], render_pkg["visibility_filter"], render_pkg["radii"]
 
+        
+        
         # Loss
         gt_image = viewpoint_cam.original_image.cuda()
         # import pdb; pdb.set_trace()
@@ -236,15 +248,34 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
         # Fidelity training
         if args.fidelity_train_en:
             lr_resolution = dataset.resolution * 4
-            gt_folder = '/fs/nexus-projects/dyn3Dscene/Codes/data/my_new_resize'
-            scene_name = os.path.basename(dataset.source_path)
-            gt_path = os.path.join(gt_folder, scene_name, f'images_{lr_resolution}', viewpoint_cam.image_name+'.png')
+            gt_folder = dataset.source_path #'/fs/nexus-projects/dyn3Dscene/Codes/data/my_new_resize'
+            gt_path = os.path.join(gt_folder, f'images_{lr_resolution}', viewpoint_cam.image_name+'.png')
+            # scene_name = os.path.basename(dataset.source_path)
+            # gt_path = os.path.join(gt_folder, scene_name, f'images_{lr_resolution}', viewpoint_cam.image_name+'.png')
             image_gt_lr = Image.open(gt_path)
             w_lr, h_lr = image_gt_lr.size
             image_gt_lr = PILtoTorch(image_gt_lr, (w_lr, h_lr)).cuda()
             image_lr = torch.nn.functional.interpolate(image.unsqueeze(0), scale_factor=0.25, mode='bicubic', antialias=True).squeeze(0)
             loss += (1.0 - opt.lambda_dssim) * l1_loss(image_lr, image_gt_lr) + opt.lambda_dssim * (1.0 - ssim(image_lr, image_gt_lr))
-        
+        if args.subsample_en:
+            lr_resolution = dataset.resolution * 4
+            gt_folder = dataset.source_path
+            scene_name = os.path.basename(dataset.source_path)
+            if "SR_results" in args.source_path:                
+                if "mipnerf360" in args.source_path:
+                    gt_folder = os.path.join('/fs/nexus-projects/dyn3Dscene/Codes/data/my_new_resize', scene_name)                
+                elif "llff" in args.source_path:
+                    gt_folder = os.path.join('/fs/nexus-projects/dyn3Dscene/Codes/datasets/nerf_llff_data', scene_name)
+                
+            gt_path = os.path.join(gt_folder, f'images_{lr_resolution}', viewpoint_cam.image_name+'.png')
+            # scene_name = os.path.basename(dataset.source_path)
+            # gt_path = os.path.join(gt_folder, scene_name, f'images_{lr_resolution}', viewpoint_cam.image_name+'.png')            
+            image_gt_lr = Image.open(gt_path)
+            w_lr, h_lr = image_gt_lr.size
+            image_gt_lr = PILtoTorch(image_gt_lr, (w_lr, h_lr)).cuda()
+            # image_lr = torch.nn.functional.interpolate(image.unsqueeze(0), scale_factor=0.25, mode='bicubic', antialias=True).squeeze(0)
+            image_lr = F.avg_pool2d(image, kernel_size=(4, 4))
+            loss += (1.0 - opt.lambda_dssim) * l1_loss(image_lr, image_gt_lr) + opt.lambda_dssim * (1.0 - ssim(image_lr, image_gt_lr))
        
         loss.backward()
         # import pdb; pdb.set_trace()
@@ -282,7 +313,9 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                         size_threshold = 20 if iteration > opt.opacity_reset_interval else None
                         # gaussians.densify_and_prune(opt.densify_grad_threshold, 0.005, scene.cameras_extent, size_threshold)
                         gaussians.densify_and_prune(opt.densify_grad_threshold, min_opacity, scene.cameras_extent, size_threshold)
-                        gaussians.compute_3D_filter(cameras=trainCameras)
+                        if not args.downgrade_3dgs:
+                            # print("3D filter is used!!!!!!")
+                            gaussians.compute_3D_filter(cameras=trainCameras)
 
                     if iteration % opt.opacity_reset_interval == 0 or (dataset.white_background and iteration == opt.densify_from_iter):
                         gaussians.reset_opacity()
@@ -290,7 +323,9 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             if iteration % 100 == 0 and iteration > opt.densify_until_iter:
                 if iteration < opt.iterations - 100:
                     # don't update in the end of training
-                    gaussians.compute_3D_filter(cameras=trainCameras)
+                    if not args.downgrade_3dgs:
+                        # print("3D filter is used!!!!!!")
+                        gaussians.compute_3D_filter(cameras=trainCameras)
             
             if iteration % 500 == 0:
                 num_points[iteration] = gaussians.get_xyz.shape[0]
@@ -391,15 +426,20 @@ if __name__ == "__main__":
     parser.add_argument("--freeze_point", action="store_true")
     parser.add_argument("--SR_GS", action="store_true")
     parser.add_argument("--fidelity_train_en", action="store_true")
+    parser.add_argument("--subsample_en", action="store_true")
     parser.add_argument("--musiq_train_en", action="store_true")
     parser.add_argument("--lpips_train_en", action="store_true")
     parser.add_argument("--prune_init_en", action="store_true")
     parser.add_argument("--seed", type=int, default=999)
     parser.add_argument("--train_tiny", action="store_true")
     parser.add_argument("--edge_aware_loss_en", action="store_true")
+    parser.add_argument("--downgrade_3dgs", action="store_true")
+    
     
     args = parser.parse_args(sys.argv[1:])
     args.save_iterations.append(args.iterations)
+    
+    start = time.time()
     
     print("Optimizing " + args.model_path)
     # Set up random seed
@@ -417,10 +457,15 @@ if __name__ == "__main__":
     network_gui.init(args.ip, args.port)
     torch.autograd.set_detect_anomaly(args.detect_anomaly)
     
+    
     if args.fidelity_train_en:
         training(lp.extract(args), op.extract(args), pp.extract(args), args.test_iterations, args.save_iterations, args.checkpoint_iterations, args.start_checkpoint, args.debug_from, args, dataset2=lp.extract(args))
     else:
         training(lp.extract(args), op.extract(args), pp.extract(args), args.test_iterations, args.save_iterations, args.checkpoint_iterations, args.start_checkpoint, args.debug_from, args)
-
+    
+    end = time.time()
+    print("==========================================================================")
+    print(f"Elapsed time: {end - start:.3f} seconds")
+    print("==========================================================================")
     # All done
     print("\nTraining complete.")

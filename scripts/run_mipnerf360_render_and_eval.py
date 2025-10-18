@@ -9,7 +9,7 @@ import time
 # scenes = [ "counter", "flowers", "garden", "stump", "treehill", "kitchen", "room"]#["bicycle", "bonsai", "counter", "flowers", "garden", "stump", "treehill", "kitchen", "room"]
 # factors = [4, 4, 4, 4, 4, 4, 4]
 
-scenes = ['fern']#["drums", "ficus", "hotdog", "lego", "materials", "mic", "ship"] #["bicycle", "bonsai", "counter", "flowers", "garden", "stump", "treehill", "kitchen", "room"]
+scenes = ['trex']#["drums", "ficus", "hotdog", "lego", "materials", "mic", "ship"] #["bicycle", "bonsai", "counter", "flowers", "garden", "stump", "treehill", "kitchen", "room"]
 factors = [2] # [4, 4, 4, 4, 4, 4, 4]
 
 excluded_gpus = set([])

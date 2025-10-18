@@ -13,3 +13,5 @@ benchmark*
 debug*
 fused
 *output*
+taming
+sbatch_file/

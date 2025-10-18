@@ -105,12 +105,14 @@ def readColmapCameras(cam_extrinsics, cam_intrinsics, images_folder):
         image_path = os.path.join(images_folder, os.path.basename(extr.name))
         image_name = os.path.basename(image_path).split(".")[0]        
         
+        # import pdb; pdb.set_trace()
         if 'llff' in image_path:            
             dir_name = os.path.dirname(images_folder)
-            base_name = os.path.basename(images_folder)    
-            # import pdb; pdb.set_trace()        
-            orig_folder =  os.path.join(dir_name, 'images')
+            base_name = os.path.basename(images_folder)
+            scene_name = os.path.basename(dir_name)               
+            orig_folder =  os.path.join('/fs/nexus-projects/dyn3Dscene/Codes/datasets/nerf_llff_data', scene_name, 'images')            
             orig_files = os.listdir(orig_folder)
+                
             orig_files = natsort.natsorted(orig_files)        
             cur_files = os.listdir(images_folder)
             cur_files = natsort.natsorted(cur_files)
@@ -133,21 +135,7 @@ def readColmapCameras(cam_extrinsics, cam_intrinsics, images_folder):
         try:
             image = Image.open(image_path)
         except:
-            # try:
-            #     if 'llff' in image_path:
-            #         dir_name = os.path.dirname(images_folder)
-            #         base_name = os.path.basename(images_folder)
-            #         resolution = base_name.split('_')[-1]
-            #         orig_folder =  os.path.join(dir_name, 'images')
-            #         orig_files = os.listdir(orig_folder)
-            #         orig_files = natsort.natsorted(orig_files)
-                    
-            #         cur_files = os.listdir(images_folder)
-            #         cur_files = natsort.natsorted(cur_files)
-            #         matching_index = next((i for i, name in enumerate(orig_files) if extr.name in name), None)
-            #         image_path = os.path.join(images_folder, cur_files[matching_index])
-            #         image = Image.open(image_path)
-            # except:
+                print("Image not found: ", image_path, "!!! *** Attention ***")
                 import pdb; pdb.set_trace()
         # get rid of too many opened files
         image = copy.deepcopy(image)

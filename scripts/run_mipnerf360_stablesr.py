@@ -7,11 +7,6 @@ import queue
 import time
 
 # scenes = ["bicycle", "bonsai", "counter", "flowers", "garden", "stump", "treehill", "kitchen", "room"]
-scenes = ["bicycle"]
-# scenes = ["kitchen", "room"]
-factors = [2,2,2,2,2,2,2,2] #[4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4] #[2,2,2,2,2,2,2,2] #[8, 8,8,8,8,8,8,8]
-# scenes = ["counter", "flowers", "garden", "stump", "treehill", "kitchen", "room"]
-# scenes = ["garden", "stump", "treehill", "kitchen", "room"]
 # factors = [4, 2, 2, 4, 4, 4, 4, 2, 2]
 
 # scenes = ["bonsai", "counter", "flowers", "garden", "stump", "treehill", "kitchen"]
@@ -21,14 +16,16 @@ factors = [2,2,2,2,2,2,2,2] #[4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4] #[2,2,2,2,2,2,2,2
 # scenes = ["Aqua", "Bedroom", "Boats", "Bridge", "CreepyAttic", "Hugo-1", "Library", "Museum-1", 
 #           "Museum-2", "NightSnow", "Playroom", "Ponche", "SaintAnne", "Shed", "Street-10", 
 #           "Tree-18", "Yellowhouse-12"]
-
-# scenes = ["Aqua",
+# scenes = ["Family", "Horse", "M60", "Playground", "Train", "Truck", "Lighthouse"]
+scenes=["bicycle"]
+# scenes = [  
+#             # "Library",
 #             # "Shed",
-#         #  "Yellowhouse-12"
+#             "Street-10",
+#             # "Yellowhouse-12"
 #          ]
-# factors = [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
-# factors = [2,2,2,2,2,2,2,2] #[4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4] #[2,2,2,2,2,2,2,2] #[8, 8,8,8,8,8,8,8]
-
+# factors = [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
+factors = [2] #[4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4] #[2,2,2,2,2,2,2,2] #[8, 8,8,8,8,8,8,8]
 
 ####################################
 # Status Check *******************
@@ -50,27 +47,22 @@ def train_scene(gpu, scene, factor):
     # Folder information
     ####################################
     # ------------ Dataset folder
-    dataset_name = "mipnerf360"
-    #Stable SR
-    
-    dataset = "/fs/nexus-projects/dyn3Dscene/Codes/datasets/SR_results/StableSR/mipnerf360"
-    dataset_gt = "/fs/nexus-projects/dyn3Dscene/Codes/data/my_new_resize"
-
     # dataset = "/fs/nexus-projects/dyn3Dscene/Codes/data/my_new_resize"
-    # dataset_gt = "/fs/nexus-projects/dyn3Dscene/Codes/data/my_new_resize"
     # dataset = "/fs/nexus-projects/dyn3Dscene/Codes/data/bicubic"
     # dataset = "/fs/nexus-projects/dyn3Dscene/Codes/data/proposed"
-    # dataset_gt = "/fs/nexus-projects/dyn3Dscene/Codes/datasets/deep_blending"
-    # dataset = "/fs/nexus-projects/dyn3Dscene/Codes/datasets/deep_blending"
+    dataset_name = "mipnerf360"
+    dataset_gt = f"/fs/nexus-projects/dyn3Dscene/Codes/datasets/{dataset_name}"
+    dataset = f"/fs/nexus-projects/dyn3Dscene/Codes/datasets/SR_results/StableSR/{dataset_name}"
     # dataset_gt = "/fs/nexus-projects/dyn3Dscene/Codes/datasets/mipnerf360"
     # ------------ Output folder
     # Original data
-    # output_dir = f"/fs/nexus-projects/dyn3Dscene/Codes/mip-splatting-mine/outputs/{dataset_name}/orig/input_DS_{int(factor)}"
-    # Stable SR data                    
-    output_dir = f"/fs/nexus-projects/dyn3Dscene/Codes/mip-splatting-mine/outputs/independent_SR/StableSR/original_setting/input_DS_{int(factor)}"
+    # output_dir = f"/fs/nexus-projects/dyn3Dscene/Codes/mip-splatting-mine/outputs/{dataset_name}/orig_new/input_DS_{int(factor)}"
+    # Stable SR data
+    # output_dir = f"/fs/nexus-projects/dyn3Dscene/Codes/mip-splatting-mine/outputs/independent_SR/StableSR/original_setting/input_DS_{int(factor)}"
+    output_dir = f"/fs/nexus-projects/dyn3Dscene/Codes/mip-splatting-mine/outputs/independent_SR/mipnerf360/StableSR/original_setting/input_DS_{int(factor)}"
     # output_dir = f"/fs/nexus-projects/dyn3Dscene/Codes/mip-splatting-mine/outputs/llff/StableSR/input_DS_{int(factor)}"
     # output_dir = f"/fs/nexus-projects/dyn3Dscene/Codes/mip-splatting-mine/outputs/independent_SR/llff/StableSR/input_DS_{int(factor)}"
-    # output_dir = f"/fs/nexus-projects/dyn3Dscene/Codes/mip-splatting-mine/outputs/independent_SR/deep_blending/StableSR/input_DS_{int(factor)}"
+    # output_dir = f"/fs/nexus-projects/dyn3Dscene/Codes/mip-splatting-mine/outputs/independent_SR/{dataset_name}/StableSR/consistent_noise/input_DS_{int(factor)}"
     # Proposed SR data
     # output_dir = f"/fs/nexus-projects/dyn3Dscene/Codes/mip-splatting-mine/outputs/proposed_SR/x4_upsample_to_DS_{int(factor)}_3DGS_iter_2000_fidelity_ratio_0.5"
     # Bicubic data
@@ -81,7 +73,7 @@ def train_scene(gpu, scene, factor):
     ####################################
     # Training command
     ###################################
-    cmd = f"OMP_NUM_THREADS=4 CUDA_VISIBLE_DEVICES={gpu} python train.py -s {dataset}/{scene} -m {output_dir}/{scene} --eval -r {factor} --port {6009+int(gpu)} --kernel_size 0.1 --output_folder {output_dir}/{scene}"
+    cmd = f"OMP_NUM_THREADS=4 CUDA_VISIBLE_DEVICES={gpu} python train.py -s {dataset}/{scene} -m {output_dir}/{scene} --eval -r {factor} --port {6002+int(gpu)} --kernel_size 0.1 --output_folder {output_dir}/{scene}"
     print(cmd)
     if not dry_run:
         os.system(cmd)
@@ -94,6 +86,11 @@ def train_scene(gpu, scene, factor):
     if not dry_run:
         os.system(cmd)
     
+    cmd = f"OMP_NUM_THREADS=4 CUDA_VISIBLE_DEVICES={gpu} python render.py -m {output_dir}/{scene} -r {int(factor)} --data_device cpu --vis_video"
+    print(cmd)
+    if not dry_run:
+        os.system(cmd)
+    
     # cmd = f"OMP_NUM_THREADS=4 CUDA_VISIBLE_DEVICES={gpu} python render.py -m {output_dir}/{scene} -r {int(factor*4)} --data_device cpu --skip_train"
     # print(cmd)
     # if not dry_run:
@@ -102,14 +99,16 @@ def train_scene(gpu, scene, factor):
     ####################################
     # Evaluation command
     ####################################
+    cmd = f"OMP_NUM_THREADS=4 CUDA_VISIBLE_DEVICES={gpu} python metrics.py -m {output_dir}/{scene} -g {dataset_gt}/{scene}"    
+    print(cmd)
+    if not dry_run:
+        os.system(cmd)
+    
     cmd = f"python evaluate.py --gt_folder /fs/nexus-projects/SR3D/Results/outputs/mip-splatting-multiresolution/load_DS_8/train_proposed_DS_2_fidelity_wt_1_iter_5000_stop_densify_2500_0304/${scene}/ours_10000/DS_2/gt_2 --img_folder /fs/nexus-projects/dyn3Dscene/Codes/mip-splatting-mine/outputs/independent_SR/StableSR/original_setting/input_DS_2/${scene}/ours_30000/DS_2/test_preds_2"
     print(cmd)
     if not dry_run:
         os.system(cmd)
-    # cmd = f"OMP_NUM_THREADS=4 CUDA_VISIBLE_DEVICES={gpu} python metrics.py -m {output_dir}/{scene} -g {dataset_gt}/{scene}"    
-    # print(cmd)
-    # if not dry_run:
-    #     os.system(cmd)
+    
     return True
 
 
