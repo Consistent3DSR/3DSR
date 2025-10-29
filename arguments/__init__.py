@@ -110,9 +110,9 @@ def get_combined_args(parser : ArgumentParser):
                 print("Config file found: {}".format(cfgfilepath))            
                 cfgfile_string = cfg_file.read()
         except:
-            import pdb; pdb.set_trace()
+            print("Config file NOT found: {}".format(cfgfilepath))
     except TypeError:
-        print("Config file not found at")        
+        print("Config file not found at")
         pass
     args_cfgfile = eval(cfgfile_string)
 

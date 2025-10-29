@@ -142,7 +142,6 @@ def generate_spiral_path(poses_arr,
   up = poses[:, :3, 1].mean(0)
   for theta in np.linspace(0., 2. * np.pi * n_rots, n_frames, endpoint=False):
     t = radii * [np.cos(theta), -np.sin(theta), -np.sin(theta * zrate), 1.]
-    # t[2] += -0.45
     position = cam2world @ t
     lookat = cam2world @ [0, 0, -focal, 1.]
     z_axis = position - lookat
@@ -152,7 +151,6 @@ def generate_spiral_path(poses_arr,
     render_pose[:3, 1:3] *= -1
     render_pose[:3, 3] /= scale
     render_poses.append(np.linalg.inv(render_pose))
-    # import pdb; pdb.set_trace()
   render_poses = np.stack(render_poses, axis=0)
   return render_poses
 

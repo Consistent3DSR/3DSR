@@ -487,7 +487,9 @@ def training_with_iters(in_dict, dataset, opt, pipe, testing_iterations, saving_
         # sample gt_image with subpixel offset
         if dataset.resample_gt_image:
             gt_image = create_offset_gt(gt_image, subpixel_offset)
-
+        # import pdb; pdb.set_trace()
+        # torchvision.utils.save_image(gt_image, 'img_gt.png')
+        # torchvision.utils.save_image(image, 'img_rendered.png')
         try:
             Ll1 = l1_loss(image, gt_image)
         except:
@@ -528,6 +530,9 @@ def training_with_iters(in_dict, dataset, opt, pipe, testing_iterations, saving_
             image_lr = torch.nn.functional.interpolate(image.unsqueeze(0), scale_factor=0.25, mode='bicubic', antialias=True).squeeze(0)
             loss_lr = (1.0 - opt.lambda_dssim) * l1_loss(image_lr, image_gt_lr) + opt.lambda_dssim * (1.0 - ssim(image_lr, image_gt_lr))
             loss += loss_lr * args.wt_lr
+            # # import pdb; pdb.set_trace()
+            # torchvision.utils.save_image(image_gt_lr, 'gt.png')
+            # torchvision.utils.save_image(image_lr, 'render.png')
         elif args.lpips_train_en:
             image_lr = torch.nn.functional.interpolate(image.unsqueeze(0), scale_factor=0.25, mode='bicubic', antialias=True).squeeze(0)
             gt_image_lr = torch.nn.functional.interpolate(gt_image.unsqueeze(0), size=image_lr.size()[-2:], mode='bicubic', antialias=True).squeeze(0)
@@ -767,24 +772,23 @@ def train_proposed_2025(dataset, op, pipe, testing_iterations, saving_iterations
     
     #############################################
     # Loading scene and Gaussians
-    #############################################
-    # import pdb; pdb.set_trace()
+    #############################################    
     op.densify_until_iter = args.densify_end
     input_dict = prepare_training(dataset, op, pipe, testing_iterations, saving_iterations, checkpoint_iterations, checkpoint, debug_from, args, dataset2)
     scene = input_dict["scene"]
     trainCameras = scene.getTrainCameras()
     
     # GS_iters = [5000, 3000, 2000, 1000]
-    # if 'llff' in dataset.source_path:
-    #     dir_name = dataset.source_path
-    #     lr_resolution = dataset.resolution * 4
+    if 'llff' in dataset.source_path:
+        dir_name = dataset.source_path
+        lr_resolution = dataset.resolution * 4
         
-    #     orig_folder =  os.path.join(dir_name, 'images')
-    #     orig_files = os.listdir(orig_folder)
-    #     orig_files = natsort.natsorted(orig_files)
+        orig_folder =  os.path.join(dir_name, 'images')
+        orig_files = os.listdir(orig_folder)
+        orig_files = natsort.natsorted(orig_files)
         
-    #     cur_files = os.listdir( os.path.join(dir_name, f'images_{lr_resolution}'))
-    #     cur_files = natsort.natsorted(cur_files)        
+        cur_files = os.listdir( os.path.join(dir_name, f'images_{lr_resolution}'))
+        cur_files = natsort.natsorted(cur_files)        
     #############################################
     # Prepare for SR method
     #############################################
@@ -957,7 +961,7 @@ def train_proposed_2025(dataset, op, pipe, testing_iterations, saving_iterations
                             #############################################
                             # Take the entire image as SR input (when input image is small enough)
                             #############################################
-                            else:                          
+                            else:
                                 if iteration == args.ddpm_steps-1:
                                     init_latent = model.get_first_stage_encoding(model.encode_first_stage(im_lq_bs[img_id].unsqueeze(0)))  # move to latent space
                                     text_init = ['']*args.n_samples
@@ -1040,6 +1044,7 @@ def train_proposed_2025(dataset, op, pipe, testing_iterations, saving_iterations
                 # torchvision.utils.save_image(trainCameras[img_id].original_image, 'vis_2.png')
                 # import pdb; pdb.set_trace()
                 trainCameras[img_id].original_image = loaded_image.clone()
+                
             # #############################################
             # # Train GS
             # #############################################
@@ -1048,10 +1053,6 @@ def train_proposed_2025(dataset, op, pipe, testing_iterations, saving_iterations
             input_dict = training_with_iters(input_dict, dataset, op, pipe, testing_iterations, saving_iterations,
                                             checkpoint_iterations, checkpoint, debug_from, args, dataset2, SR_iter=iteration,) 
             
-    # op.iterations = 10000
-    # input_dict = training_with_iters(input_dict, dataset, op, pipe, testing_iterations, saving_iterations,
-    #                             checkpoint_iterations, checkpoint, debug_from, args, dataset2, SR_iter=iteration,)
-
 
 def train_proposed_202505(dataset, op, pipe, testing_iterations, saving_iterations, checkpoint_iterations, checkpoint, debug_from, args, dataset2=None):
     #############################################
