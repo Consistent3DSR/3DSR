@@ -65,9 +65,9 @@ def train_scene(gpu, scene, factor):
     # dataset_gt = "/fs/nexus-projects/dyn3Dscene/Codes/datasets/mipnerf360"
     # ------------ Output folder
     # Original data
-    # output_dir = f"/fs/nexus-projects/dyn3Dscene/Codes/mip-splatting-mine/outputs/{dataset_name}/orig/input_DS_{int(factor)}"
+    output_dir = f"/fs/nexus-projects/dyn3Dscene/Codes/mip-splatting-mine/outputs/{dataset_name}/orig/input_DS_{int(factor)}"
     # Stable SR data                    
-    output_dir = f"/fs/nexus-projects/dyn3Dscene/Codes/mip-splatting-mine/outputs/independent_SR/StableSR/original_setting/input_DS_{int(factor)}"
+    # output_dir = f"/fs/nexus-projects/dyn3Dscene/Codes/mip-splatting-mine/outputs/independent_SR/StableSR/original_setting/input_DS_{int(factor)}"
     # output_dir = f"/fs/nexus-projects/dyn3Dscene/Codes/mip-splatting-mine/outputs/llff/StableSR/input_DS_{int(factor)}"
     # output_dir = f"/fs/nexus-projects/dyn3Dscene/Codes/mip-splatting-mine/outputs/independent_SR/llff/StableSR/input_DS_{int(factor)}"
     # output_dir = f"/fs/nexus-projects/dyn3Dscene/Codes/mip-splatting-mine/outputs/independent_SR/deep_blending/StableSR/input_DS_{int(factor)}"

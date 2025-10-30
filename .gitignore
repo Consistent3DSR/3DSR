@@ -17,3 +17,4 @@ taming
 sbatch_file/
 batch_files/
 diffusers/
+exp.sh

@@ -34,6 +34,13 @@ We introduce a Super Resolution (3DSR), a novel 3D Gaussian-splatting-based supe
 <br>
 
 # Installation
+
+### Dependencies
+- Pytorch == 1.13.1
+- CUDA == 11.7
+- pytorch-lightning==1.4.2
+- xformers == 0.0.16 (Optional)
+
 Clone the repository and create an anaconda environment using
 ```
 git clone git@github.com:Consistent3DSR/3DSR.git
@@ -42,7 +49,7 @@ cd 3DSR
 conda create -y -n 3dsr python=3.8
 conda activate 3dsr
 
-pip install torch==1.12.1+cu113 torchvision==0.13.1+cu113 -f https://download.pytorch.org/whl/torch_stable.html
+pip install torch==1.13.1+cu117 torchvision==0.14.1+cu117 torchaudio==0.13.1 --extra-index-url https://download.pytorch.org/whl/cu117
 conda install cudatoolkit-dev=11.3 -c conda-forge
 
 pip install -r requirements.txt
