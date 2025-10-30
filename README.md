@@ -28,7 +28,7 @@ A 3D Consistent Super-Resolution Framework</h1>
   </a>
 </p>
 
-<p align="center">
+<p align="left">
 We introduce a Super Resolution (3DSR), a novel 3D Gaussian-splatting-based super-resolution framework that leverages off-the-shelf diffusion-based 2D super-resolution models. 3DSR encourages 3D consistency across views via the use of an explicit 3D Gaussian-splatting-based scene representation.
 </p>
 <br>
