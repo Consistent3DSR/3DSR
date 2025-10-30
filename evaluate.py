@@ -119,31 +119,6 @@ def evaluate(img_folder, gt_folder=None):
         writer.writerow([output_prefix] + [f"{val:.4f}" for val in full_dict.values()])
     
     print(f"✅ Transposed results saved to {csv_path}")
-    # # Write full results to CSV
-    # with open(os.path.join(img_folder,f"results.csv"), 'w', newline='') as csvfile:
-    #     writer = csv.writer(csvfile)
-    #     writer.writerow(["Metric", "Value"])
-    #     for key, val in full_dict.items():
-    #         writer.writerow([key, val])
-    
-    # # print(f"✅ Results saved to {os.path.join(img_folder,f"results.csv")}")
-    # print(f"✅ Results saved to {os.path.join(img_folder, 'results.csv')}")
-# # Write per-image results to CSV
-# per_image_keys = ["image", "SSIM", "PSNR", "LPIPS", "MUSIQ", "NIQE", "CLIPIQA"]
-# with open(f"per_view_{output_prefix}.csv", 'w', newline='') as csvfile:
-#     writer = csv.writer(csvfile)
-#     writer.writerow(per_image_keys)
-#     for img in image_names:
-#         row = [
-#             img,
-#             per_view_dict["SSIM"][img],
-#             per_view_dict["PSNR"][img],
-#             per_view_dict["LPIPS"][img],
-#             per_view_dict["MUSIQ"][img],
-#             per_view_dict["NIQE"][img],
-#             per_view_dict["CLIPIQA"][img],
-#         ]
-#         writer.writerow(row)
    
 if __name__ == "__main__":
     device = torch.device("cuda:0")
