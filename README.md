@@ -50,12 +50,17 @@ conda create -y -n 3dsr python=3.8
 conda activate 3dsr
 
 pip install torch==1.13.1+cu117 torchvision==0.14.1+cu117 torchaudio==0.13.1 --extra-index-url https://download.pytorch.org/whl/cu117
-conda install cudatoolkit-dev=11.3 -c conda-forge
+conda install nvidia/label/cuda-11.7.1::cuda-toolkit
 
 pip install -r requirements.txt
 
 pip install submodules/diff-gaussian-rasterization
 pip install submodules/simple-knn/
+
+cd third_parties
+pip install -e git+https://github.com/CompVis/taming-transformers.git@master#egg=taming-transformers
+pip install -e git+https://github.com/openai/CLIP.git@main#egg=clip
+pip install -e .
 ```
 
 # Dataset
