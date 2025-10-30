@@ -1,47 +1,46 @@
 <p align="center">
 
-  <h1 align="center">Mip-Splatting: Alias-free 3D Gaussian Splatting</h1>
+  <h1 align="center">Bridging Diffusion Models and 3D Representations:
+
+A 3D Consistent Super-Resolution Framework</h1>
   <p align="center">
-    <a href="https://niujinshuchong.github.io/">Zehao Yu</a>
+    <a href="https://jamie725.github.io/website/">Yi-Ting Chen</a>
     ·
-    <a href="https://apchenstu.github.io/">Anpei Chen</a>
+    <a href="https://tinghliao.github.io/">Ting-Hsuan Liao</a>
     ·
-    <a href="https://github.com/hbb1">Binbin Huang</a>
+    <a href="https://psguo.github.io/">Pengsheng Guo</a>
     ·
-    <a href="https://tsattler.github.io/">Torsten Sattler</a>
+    <a href="https://www.alexander-schwing.de/">Alexander Schwing</a>
     ·
-    <a href="http://www.cvlibs.net/">Andreas Geiger</a>
+    <a href="https://jbhuang0604.github.io/">Jia-Bin Huang</a>
 
   </p>
-  <h2 align="center">CVPR 2024 Best Student Paper</h2>
+  <h2 align="center">ICCV 2025</h2>
 
-  <h3 align="center"><a href="https://drive.google.com/file/d/1Q7KgGbynzcIEyFJV1I17HgrYz6xrOwRJ/view?usp=sharing">Paper</a> | <a href="https://arxiv.org/pdf/2311.16493.pdf">arXiv</a> | <a href="https://niujinshuchong.github.io/mip-splatting/">Project Page</a>  | <a href="https://niujinshuchong.github.io/mip-splatting-demo/">Online Viewer</a> </h3>
+  <h3 align="center"><a href="https://openaccess.thecvf.com/content/ICCV2025/html/Chen_Bridging_Diffusion_Models_and_3D_Representations_A_3D_Consistent_Super-Resolution_ICCV_2025_paper.html">Paper</a> | <a href="https://arxiv.org/abs/2508.04090">arXiv</a> | <a href="https://consistent3dsr.github.io/">Project Page</a> </h3>
   <div align="center"></div>
 </p>
 
 
 <p align="center">
   <a href="">
-    <img src="./media/bicycle_3dgs_vs_ours.gif" alt="Logo" width="95%">
+    <img src="./media/trex.gif" alt="Logo" width="95%">
   </a>
 </p>
 
 <p align="center">
-We introduce a 3D smoothing filter and a 2D Mip filter for 3D Gaussian Splatting (3DGS), eliminating multiple artifacts and achieving alias-free renderings.  
+We introduce a Super Resolution (3DSR), a novel 3D Gaussian-splatting-based super-resolution framework that leverages off-the-shelf diffusion-based 2D super-resolution models. 3DSR encourages 3D consistency across views via the use of an explicit 3D Gaussian-splatting-based scene representation.
 </p>
 <br>
-
-# Update
-We integrated an improved densification metric proposed in [Gaussian Opacity Fields](https://niujinshuchong.github.io/gaussian-opacity-fields/), which significantly improves the novel view synthesis results, please check the [paper](https://arxiv.org/pdf/2404.10772.pdf) for details. Please download the lastest code and reinstall `diff-gaussian-rasterization` to try it out. 
 
 # Installation
 Clone the repository and create an anaconda environment using
 ```
-git clone git@github.com:autonomousvision/mip-splatting.git
-cd mip-splatting
+git clone git@github.com:Consistent3DSR/3DSR.git
+cd 3DSR
 
-conda create -y -n mip-splatting python=3.8
-conda activate mip-splatting
+conda create -y -n 3dsr python=3.8
+conda activate 3dsr
 
 pip install torch==1.12.1+cu113 torchvision==0.13.1+cu113 -f https://download.pytorch.org/whl/torch_stable.html
 conda install cudatoolkit-dev=11.3 -c conda-forge
@@ -53,14 +52,11 @@ pip install submodules/simple-knn/
 ```
 
 # Dataset
-## Blender Dataset
-Please download and unzip nerf_synthetic.zip from the [NeRF's official Google Drive](https://drive.google.com/drive/folders/128yBriW1IG_3NJ5Rp7APSTZsJqdJdfc1). Then generate multi-scale blender dataset with
-```
-python convert_blender_data.py --blender_dir nerf_synthetic/ --out_dir multi-scale
-```
+## LLFF Dataset
+Please download and unzip nerf_synthetic.zip from the [LLFF](https://bmild.github.io/llff/). 
 
 ## Mip-NeRF 360 Dataset
-Please download the data from the [Mip-NeRF 360](https://jonbarron.info/mipnerf360/) and request the authors for the treehill and flowers scenes.
+Please download the data from the [Mip-NeRF 360](https://jonbarron.info/mipnerf360/) and request the authors for the treehill scenes.
 
 # Training and Evaluation
 ```
@@ -77,34 +73,16 @@ python scripts/run_mipnerf360.py
 python scripts/run_mipnerf360_stmt.py 
 ```
 
-# Online viewer
-After training, you can fuse the 3D smoothing filter to the Gaussian parameters with
-```
-python create_fused_ply.py -m {model_dir}/{scene} --output_ply fused/{scene}_fused.ply"
-```
-Then use our [online viewer](https://niujinshuchong.github.io/mip-splatting-demo) to visualize the trained model.
-
 # Acknowledgements
-This project is built upon [3DGS](https://github.com/graphdeco-inria/gaussian-splatting). Please follow the license of 3DGS. We thank all the authors for their great work and repos. 
+This project is built upon [MipSplatting](https://github.com/autonomousvision/mip-splatting) and [StableSR](https://github.com/IceClear/StableSR). Please follow the license of MipSplatting and StableSR. We thank all the authors for their great work and repos. 
 
 # Citation
 If you find our code or paper useful, please cite
 ```bibtex
-@InProceedings{Yu2024MipSplatting,
-    author    = {Yu, Zehao and Chen, Anpei and Huang, Binbin and Sattler, Torsten and Geiger, Andreas},
-    title     = {Mip-Splatting: Alias-free 3D Gaussian Splatting},
-    booktitle = {Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)},
-    month     = {June},
-    year      = {2024},
-    pages     = {19447-19456}
+@inproceedings{chen2025bridging,
+  title={Bridging Diffusion Models and 3D Representations: A 3D Consistent Super-Resolution Framework},
+  author={Chen, Yi-Ting and Liao, Ting-Hsuan and Guo, Pengsheng and Schwing, Alexander and Huang, Jia-Bin},
+  booktitle={Proceedings of the IEEE/CVF International Conference on Computer Vision},
+  pages={13481--13490},
+  year={2025}
 }
-```
-If you find our improved densification metric useful, please kindly cite
-```
-@article{Yu2024GOF,
-  author    = {Yu, Zehao and Sattler, Torsten and Geiger, Andreas},
-  title     = {Gaussian Opacity Fields: Efficient High-quality Compact Surface Reconstruction in Unbounded Scenes},
-  journal   = {arXiv:2404.10772},
-  year      = {2024},
-}
-```
