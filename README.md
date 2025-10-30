@@ -70,9 +70,14 @@ Please download and unzip nerf_synthetic.zip from the [LLFF](https://bmild.githu
 ## Mip-NeRF 360 Dataset
 Please download the data from the [Mip-NeRF 360](https://jonbarron.info/mipnerf360/) and request the authors for the treehill scenes.
 
+# Preprocessing - resizing images (MipNeRF360 required)
+```
+sh run_resize_mipnerf360.sh
+```
+
 # Training and Evaluation
 ```
-# single-scale training and single-scale testing on NeRF-synthetic dataset
+# Pretrained on low-resolution
 python scripts/run_nerf_synthetic_stmt.py 
 
 # multi-scale training and multi-scale testing on NeRF-synthetic dataset

@@ -1,1 +1,0 @@
-echo $SLURM_JOB_ID
