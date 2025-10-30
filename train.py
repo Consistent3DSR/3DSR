@@ -214,12 +214,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             dx = torch.abs(image[:, :,1:] - image[:,:,:-1])
             dy = torch.abs(image[:,1:,:] - image[:,:-1,:])
             dx_norm = dx / dx.max()
-            dy_norm = dy / dy.max()
-                        
-            # out_x = Image.fromarray((dx_norm.cpu().detach().permute(1,2,0).numpy() * 255).astype(np.uint8))
-            # out_y = Image.fromarray((dy_norm.cpu().detach().permute(1,2,0).numpy() * 255).astype(np.uint8))
-            # out_x.save("dx.png")
-            # out_y.save("dy.png")
+            dy_norm = dy / dy.max()            
             dx2 = torch.zeros_like(image)
             dy2 = torch.zeros_like(image)
             dx2[:,:,1:] = dx_norm

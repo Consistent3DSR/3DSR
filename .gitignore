@@ -15,3 +15,5 @@ fused
 *output*
 taming
 sbatch_file/
+batch_files/
+diffusers/
