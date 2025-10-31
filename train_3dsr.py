@@ -78,7 +78,7 @@ def prepare_training(dataset, opt, pipe, testing_iterations, saving_iterations, 
     gaussians = GaussianModel(dataset.sh_degree)
     
     if args.load_pretrain:
-        scene = Scene(dataset, gaussians, load_iteration=30000, shuffle=False, train_tiny=args.train_tiny)
+        scene = Scene(dataset, gaussians, load_iteration=30000, shuffle=False)
         scene.model_path = args.output_folder
         dataset_name = os.path.basename(dataset.source_path)
         try:
@@ -737,10 +737,9 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
         testCameras2 = scene2.getTestCameras().copy()
         allCameras2 = trainCameras2 + testCameras2
         viewpoint_stack2 = None
-        import pdb; pdb.set_trace()
     
     if args.load_pretrain:
-        scene = Scene(dataset, gaussians, load_iteration=30000, shuffle=False, train_tiny=args.train_tiny)
+        scene = Scene(dataset, gaussians, load_iteration=30000, shuffle=False)
         scene.model_path = args.output_folder
         dataset_name = os.path.basename(dataset.source_path)
         dataset.model_path = os.path.join(args.output_folder, dataset_name)
@@ -1069,7 +1068,6 @@ def parse_args():
     parser.add_argument("--lpips_train_en", action="store_true")    
     parser.add_argument("--prune_init_en", action="store_true")
     parser.add_argument("--seed", type=int, default=999)
-    parser.add_argument("--train_tiny", action="store_true")
     parser.add_argument("--edge_aware_loss_en", action="store_true")
     parser.add_argument("--lpips_wt", type=float, default=0.2)
     parser.add_argument("--wt_lr", type=float, default=0.4)

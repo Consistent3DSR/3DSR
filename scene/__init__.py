@@ -22,7 +22,7 @@ class Scene:
 
     gaussians : GaussianModel
 
-    def __init__(self, args : ModelParams, gaussians : GaussianModel, load_iteration=None, shuffle=True, resolution_scales=[1.0], train_tiny=False):
+    def __init__(self, args : ModelParams, gaussians : GaussianModel, load_iteration=None, shuffle=True, resolution_scales=[1.0]):
         """b
         :param path: Path to colmap scene main folder.
         """
@@ -40,10 +40,8 @@ class Scene:
         self.train_cameras = {}
         self.test_cameras = {}
         
-        # import pdb; pdb.set_trace()
-        # try:
         if os.path.exists(os.path.join(args.source_path, "sparse")):
-            scene_info = sceneLoadTypeCallbacks["Colmap"](args.source_path, args.images, args.eval, resolution=args.resolution, train_tiny=train_tiny)
+            scene_info = sceneLoadTypeCallbacks["Colmap"](args.source_path, args.images, args.eval, resolution=args.resolution)
         elif os.path.exists(os.path.join(args.source_path, "transforms_train.json")):
             print("Found transforms_train.json file, assuming Blender data set!")
             scene_info = sceneLoadTypeCallbacks["Blender"](args.source_path, args.white_background, args.eval, resolution=args.resolution)
@@ -53,13 +51,10 @@ class Scene:
         else:
             print("===================================================")
             print('Could not find scene data, please check the path: {}'.format(os.path.join(args.source_path, "sparse")))
-            import pdb; pdb.set_trace()
             assert False, "Could not recognize scene type!"
-        # except:
-        #     import pdb; pdb.set_trace()
             
         print("Loading Scene -------------------") 
-        # import pdb; pdb.set_trace()
+        
         if not self.loaded_iter:
             with open(scene_info.ply_path, 'rb') as src_file, open(os.path.join(self.model_path, "input.ply") , 'wb') as dest_file:
                 dest_file.write(src_file.read())

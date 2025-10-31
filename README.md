@@ -64,20 +64,34 @@ pip install -e .
 ```
 
 # Dataset
-## LLFF Dataset
-Please download and unzip nerf_synthetic.zip from the [LLFF](https://bmild.github.io/llff/). 
+### LLFF Dataset
+- Please download and unzip nerf_synthetic.zip from the [LLFF](https://bmild.github.io/llff/). 
 
-## Mip-NeRF 360 Dataset
-Please download the data from the [Mip-NeRF 360](https://jonbarron.info/mipnerf360/) and request the authors for the treehill scenes.
+### Mip-NeRF 360 Dataset
+- Please download the data from the [Mip-NeRF 360](https://jonbarron.info/mipnerf360/) and request the authors for the treehill scenes.
 
-# Preprocessing - resizing images (MipNeRF360 required)
+# Preprocessing - resizing images (Optional for MipNeRF360)
 ```
 sh run_resize_mipnerf360.sh
+```
+This is to fix the issue of resolution difference when high resolution images' resolution is not 4 dividable. 
+- Example: If HR resolution is 1001 x 1001, LR resolution will be 250 x 250, so the 4x upsampled images will be with resolution of 1000 x 1000.
+
+# Model download
+- StableSR-Turbo: Get the ckpt first from [[HuggingFace](https://huggingface.co/Iceclear/StableSR/resolve/main/stablesr_turbo.ckpt) or [OpenXLab](https://openxlab.org.cn/models/detail/Iceclear/StableSR/tree/main)].
+- VQGAN autoencoder weights: Get the ckpt from [[HuggingFace](https://huggingface.co/Iceclear/StableSR/resolve/main/vqgan_cfw_00011.ckpt) or [OpenXLab](https://openxlab.org.cn/models/detail/Iceclear/StableSR/tree/main)].
+- The model weight folder should be like this:
+```
+3DSR/
+  └── third_parties
+           └── weights
+                  └── stablesr_turbo.ckpt
+                  └── vqgan_cfw_00011.ckpt
 ```
 
 # Training and Evaluation
 ```
-# Pretrained on low-resolution
+# Pretrained LR models
 python scripts/run_nerf_synthetic_stmt.py 
 
 # multi-scale training and multi-scale testing on NeRF-synthetic dataset

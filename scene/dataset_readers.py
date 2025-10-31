@@ -170,7 +170,7 @@ def storePly(path, xyz, rgb):
     ply_data = PlyData([vertex_element])
     ply_data.write(path)
 
-def readColmapSceneInfo(path, images, eval, llffhold=8, resolution=1, train_tiny=False, cam_info_path=None):
+def readColmapSceneInfo(path, images, eval, llffhold=8, resolution=1, cam_info_path=None):
     try:
         cameras_extrinsic_file = os.path.join(path, "sparse/0", "images.bin")
         cameras_intrinsic_file = os.path.join(path, "sparse/0", "cameras.bin")
@@ -183,18 +183,10 @@ def readColmapSceneInfo(path, images, eval, llffhold=8, resolution=1, train_tiny
         cam_intrinsics = read_intrinsics_text(cameras_intrinsic_file)
     
     reading_dir = "images" if images == None else images
-    # Jamie
+    
     if resolution > 1:
         reading_dir = reading_dir + f"_{resolution}"    
-    # dataset_name = os.path.basename(path)
-    # file_name = f"{dataset_name}_cam_infos_DS_{resolution}.json"
-    # if os.path.exists(file_name):        
-    #     with open(file_name, 'rb') as f:
-    #         cam_infos_unsorted = pickle.load(f)
-    # else:
-    #     cam_infos_unsorted = readColmapCameras(cam_extrinsics=cam_extrinsics, cam_intrinsics=cam_intrinsics, images_folder=os.path.join(path, reading_dir))
-    #     with open(file_name, 'wb') as f:
-    #         pickle.dump(cam_infos_unsorted, f)
+    
     cam_infos_unsorted = readColmapCameras(cam_extrinsics=cam_extrinsics, cam_intrinsics=cam_intrinsics, images_folder=os.path.join(path, reading_dir))
     cam_infos = sorted(cam_infos_unsorted.copy(), key = lambda x : x.image_name)
     
@@ -221,22 +213,7 @@ def readColmapSceneInfo(path, images, eval, llffhold=8, resolution=1, train_tiny
         pcd = fetchPly(ply_path)
     except:
         pcd = None
-    
-    # Jamie
-    if train_tiny:
-        small_list = []
-        small_list.append(train_cam_infos[0])
-        small_list.append(train_cam_infos[1])
-        small_list.append(train_cam_infos[3])
-        # small_list.append(train_cam_infos[5])
-        # small_list.append(train_cam_infos[8])
-        # small_list.append(train_cam_infos[22])
-        # small_list.append(train_cam_infos[24])
-        # small_list.append(train_cam_infos[89])
-        # small_list.append(train_cam_infos[152])
-        # import pdb; pdb.set_trace()
-        train_cam_infos = small_list
-    
+        
     scene_info = SceneInfo(point_cloud=pcd,
                            train_cameras=train_cam_infos,
                            test_cameras=test_cam_infos,

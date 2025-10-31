@@ -77,7 +77,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
     #     viewpoint_stack2 = None
     
     if args.load_pretrain:
-        scene = Scene(dataset, gaussians, load_iteration=30000, shuffle=False, train_tiny=args.train_tiny)
+        scene = Scene(dataset, gaussians, load_iteration=30000, shuffle=False)
         scene.model_path = args.output_folder
         dataset_name = os.path.basename(dataset.source_path)
         dataset.model_path = os.path.join(args.output_folder, dataset_name)
@@ -426,7 +426,6 @@ if __name__ == "__main__":
     parser.add_argument("--lpips_train_en", action="store_true")
     parser.add_argument("--prune_init_en", action="store_true")
     parser.add_argument("--seed", type=int, default=999)
-    parser.add_argument("--train_tiny", action="store_true")
     parser.add_argument("--edge_aware_loss_en", action="store_true")
     parser.add_argument("--downgrade_3dgs", action="store_true")
     
