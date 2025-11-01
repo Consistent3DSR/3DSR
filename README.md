@@ -107,8 +107,8 @@ GS_iters=5000
 output_dir="./outputs/LR_pretrained/input_DS_$((HR_factor * 4))"
 # Define 3DSR experiment directory    
 exp_dir="./outputs/${dataset_name}/load_DS_$((HR_factor * 4))"
-######################################################################
 ```
+And then run:
 ```
 sh run_3dsr.sh
 ```
