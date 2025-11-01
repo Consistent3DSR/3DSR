@@ -102,7 +102,7 @@ gpu=0
 # HR resolution downscale factor
 HR_factor=4
 # Number of GS training iterations for each diffusion step
-GS_iters=1000
+GS_iters=5000
 # Pretrained LR model path
 output_dir="./outputs/LR_pretrained/input_DS_$((HR_factor * 4))"
 # Define 3DSR experiment directory    
