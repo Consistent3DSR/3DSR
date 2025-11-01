@@ -130,7 +130,4 @@ def safe_state(silent):
     random.seed(0)
     np.random.seed(0)
     torch.manual_seed(0)
-    try:
-        torch.cuda.set_device(torch.device("cuda:0"))
-    except:
-        import pdb; pdb.set_trace()
+    torch.cuda.set_device(torch.device("cuda:0"))

@@ -42,7 +42,6 @@ def evaluate(img_folder, gt_folder=None):
     img_names_gt = sorted([f for f in os.listdir(gt_folder) if is_image_file(f)])
     if len(img_names_test) != len(img_names_gt):
         print(f"⚠️ Mismatched file counts! test: {len(img_names_test)} vs gt: {len(img_names_gt)}")
-        import pdb; pdb.set_trace()
 
     ssims, psnrs, lpipss = [], [], []
     musiqs, niqes, clips = [], [], []
@@ -53,12 +52,10 @@ def evaluate(img_folder, gt_folder=None):
         if img_names_test[id] not in img_names_gt:
             print(f"⚠️ Skipping {img_names_test[id]}: not found in GT folder")
             continue
+                
+        gt = tf.to_tensor(Image.open(os.path.join(gt_folder, img_names_gt[id])).convert('RGB')).unsqueeze(0).cuda()
+        render = tf.to_tensor(Image.open(os.path.join(img_folder, img_names_test[id])).convert('RGB')).unsqueeze(0).cuda()
         
-        try:
-            gt = tf.to_tensor(Image.open(os.path.join(gt_folder, img_names_gt[id])).convert('RGB')).unsqueeze(0).cuda()
-            render = tf.to_tensor(Image.open(os.path.join(img_folder, img_names_test[id])).convert('RGB')).unsqueeze(0).cuda()
-        except:
-            import pdb; pdb.set_trace()
         ssims.append(ssim(render, gt))
         psnrs.append(psnr(render, gt))
 

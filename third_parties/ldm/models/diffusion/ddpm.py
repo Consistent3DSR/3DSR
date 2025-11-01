@@ -2632,7 +2632,6 @@ class LatentDiffusionSRTextWT(DDPM):
                 if len(input_list) == batch_size or col == grid_cols-1:
                     input_list = torch.cat(input_list, dim=0)
                     cond_list = torch.cat(cond_list, dim=0)
-                    # import pdb; pdb.set_trace()
                     if unconditional_conditioning is None or unconditional_guidance_scale == 1.:
                         struct_cond_input = self.structcond_stage_model(cond_list, t_in[:input_list.size(0)])                        
                         model_out = self.apply_model(input_list, t_in[:input_list.size(0)], c[:input_list.size(0)], struct_cond_input, return_ids=return_codebook_ids)

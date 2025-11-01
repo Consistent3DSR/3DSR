@@ -2,14 +2,15 @@
 ######################################################################
 # User-configurable parameters
 ######################################################################
-dataset_name="mipnerf360"
-dataset_path="/fs/nexus-projects/dyn3Dscene/Codes/data/my_new_resize"
+dataset_name="mipnerf360" #choose from [mipnerf360, llff]
+# dataset_path="/fs/nexus-projects/dyn3Dscene/Codes/data/my_new_resize"
+dataset_path="path/to/your/dataset"
 # GPU ID
 gpu=0
 # HR resolution downscale factor
 HR_factor=4
 # Number of GS training iterations for each diffusion step
-GS_iters=5000
+GS_iters=1000
 # Pretrained LR model path
 output_dir="./outputs/LR_pretrained/input_DS_$((HR_factor * 4))"
 # Define 3DSR experiment directory    
@@ -19,14 +20,14 @@ exp_dir="./outputs/${dataset_name}/load_DS_$((HR_factor * 4))"
 # Mip-NeRF 360 scenes
 scenes=(
    "bicycle"
-#    "flowers"
-#    "garden"
-#    "stump"
-#    "treehill"
-#    "room"
-#    "counter"
-#    "kitchen"
-#    "bonsai"
+   "flowers"
+   "garden"
+   "stump"
+   "treehill"
+   "room"
+   "counter"
+   "kitchen"
+   "bonsai"
 )
 
 # LLFF scenes
@@ -47,18 +48,22 @@ for scene in "${scenes[@]}"; do
     # Train LR model
     #################
     export NUM_ITERS=30000
-    OMP_NUM_THREADS=4 CUDA_VISIBLE_DEVICES=$gpu python train.py \
+    OMP_NUM_THREADS=4 CUDA_VISIBLE_DEVICES=$gpu python train_3dsr.py \
         -s ${dataset_path}/${scene} \
         -m ${output_dir}/${scene} \
         --eval \
         -r $((HR_factor * 4)) \
         --port $((6000 + gpu)) \
         --kernel_size 0.1 \
-        --output_folder ${output_dir}/${scene}
+        --output_folder ${output_dir}/${scene} \
+        --original
 
     # Render test set
     OMP_NUM_THREADS=4 CUDA_VISIBLE_DEVICES=${gpu} python render.py \
-        -m ${output_dir}/${scene} -r $((HR_factor * 4)) --data_device cpu --skip_train
+        -m ${output_dir}/${scene} \
+        -r $((HR_factor * 4)) \
+        --data_device cpu \
+        --skip_train
 
     #################
     # Training 3DSR
@@ -85,7 +90,7 @@ for scene in "${scenes[@]}"; do
         --vqgan_ckpt ./third_parties/weights/vqgan_cfw_00011.ckpt \
         --colorfix_type wavelet \
         --upscale 4 \
-        --fidelity_train \
+        --fidelity_train_en \
         --wt_lr 1 \
         --densify_end $((NUM_ITERS / 2))
     
@@ -95,10 +100,17 @@ for scene in "${scenes[@]}"; do
     echo "🎨 Rendering scene: $scene at iteration ${iteration}"
     # Render test set
     OMP_NUM_THREADS=4 CUDA_VISIBLE_DEVICES=${gpu} python render.py \
-        -m ${exp_dir}/${scene} -r $((HR_factor)) --data_device cpu --skip_train
+        -m ${exp_dir}/${scene} \
+        -r $((HR_factor)) \
+        --data_device cpu \
+        --skip_train
     # Render video
     OMP_NUM_THREADS=4 CUDA_VISIBLE_DEVICES=${gpu} python render.py \
-        -m ${exp_dir}/${scene} -r $((HR_factor)) --data_device cpu --skip_train --vis_video
+        -m ${exp_dir}/${scene} \
+        -r $((HR_factor)) \
+        --data_device cpu \
+        --skip_train \
+        --vis_video
 
     #################
     # Evaluation

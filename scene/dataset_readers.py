@@ -105,7 +105,6 @@ def readColmapCameras(cam_extrinsics, cam_intrinsics, images_folder):
         image_path = os.path.join(images_folder, os.path.basename(extr.name))
         image_name = os.path.basename(image_path).split(".")[0]        
         
-        # import pdb; pdb.set_trace()
         if 'llff' in image_path:            
             dir_name = os.path.dirname(images_folder)
             base_name = os.path.basename(images_folder)
@@ -117,26 +116,19 @@ def readColmapCameras(cam_extrinsics, cam_intrinsics, images_folder):
             cur_files = os.listdir(images_folder)
             cur_files = natsort.natsorted(cur_files)
             if not len(cur_files) == len(orig_files):
-                import pdb; pdb.set_trace()
                 assert len(cur_files) == len(orig_files)
-            # import pdb; pdb.set_trace()
-            try:
-                matching_index = next((i for i, name in enumerate(orig_files) if image_name in name), None)
-                image_name = cur_files[matching_index].split('.')[0]
-            except:
-                import pdb; pdb.set_trace()
-            
+
+            matching_index = next((i for i, name in enumerate(orig_files) if image_name in name), None)
+            image_name = cur_files[matching_index].split('.')[0]
             image_path = os.path.join(images_folder, cur_files[matching_index])
         if not os.path.exists(image_path):
             dir_name = os.path.dirname(image_path)
             filename = os.path.basename(image_path).split(".")[0] + '.png'
             image_path = os.path.join(dir_name, filename)
-        # import pdb; pdb.set_trace()
         try:
             image = Image.open(image_path)
         except:
                 print("Image not found: ", image_path, "!!! *** Attention ***")
-                import pdb; pdb.set_trace()
         # get rid of too many opened files
         image = copy.deepcopy(image)
         cam_info = CameraInfo(uid=uid, R=R, T=T, FovY=FovY, FovX=FovX, image=image,

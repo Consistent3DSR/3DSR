@@ -71,7 +71,6 @@ def cameraList_from_camInfos(cam_infos, resolution_scale, args):
             camera_list.append(loadCam(args, id, c, resolution_scale))
         except:
             print(f"Error loading camera {id} with image {c.image_name}, resolution {resolution_scale}")
-            import pdb; pdb.set_trace()
 
     return camera_list
 
@@ -319,16 +318,13 @@ def generate_spiral_path(poses, bounds, n_frames=120, n_rots=2, zrate=.5): # tun
     render_poses = []
     cam2world = average_pose(poses)
     up = poses[:, :3, 1].mean(0)
-    import pdb; pdb.set_trace()
     for theta in np.linspace(0., 2. * np.pi * n_rots, n_frames, endpoint=False):
         t = radii * [np.cos(theta), -np.sin(theta), -np.sin(theta * zrate), 1.]
         position = cam2world @ t
         lookat = cam2world @ [0, 0, -focal, 1.]
         z_axis = position - lookat
         render_poses.append(viewmatrix(z_axis, up, position))
-        import pdb; pdb.set_trace()
     render_poses = np.stack(render_poses, axis=0)
-    # import pdb; pdb.set_trace()
     return render_poses
 
 
@@ -357,7 +353,6 @@ def transform_poses_pca(poses):
     transform = np.concatenate([rot, rot @ -t_mean[:, None]], -1)
     poses_recentered = unpad_poses(transform @ pad_poses(poses))
     transform = np.concatenate([transform, np.eye(4)[3:]], axis=0)
-    import pdb; pdb.set_trace()
     # Flip coordinate system if z component of y-axis is negative
     if poses_recentered.mean(axis=0)[2, 1] < 0:
         poses_recentered = np.diag(np.array([1, -1, -1])) @ poses_recentered

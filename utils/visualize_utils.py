@@ -153,7 +153,6 @@ def visualize(gs, viewpoint_camera, visibility_mask, save_path='3d_visualization
     z_valid = z_max * z_min
     xyz_valid = x_valid * y_valid * z_valid
     mask = xyz_valid.cpu().numpy()
-    # import pdb; pdb.set_trace()
     # mask = mask * xyz_valid.cpu().numpy()
     
     points = gs._xyz[mask].detach().cpu().numpy()    
@@ -202,10 +201,10 @@ def visualize(gs, viewpoint_camera, visibility_mask, save_path='3d_visualization
     #         scene=dict(aspectmode='data',aspectratio=dict(x=1, y=1, z=1),),
     #         showlegend=False,width=width,height=height,))
     fig.write_html(save_path)
-    # import pdb; pdb.set_trace()
+    
     # fig_json = fig.to_json()
     # with open("vis_gaussians.json", 'w') as f:
     #     f.write(fig_json)
     # fig.write_image(save_path.replace('.html', '.png'))
     # fig.write_image("out.png", engine="orca")
-    # import pdb; pdb.set_trace()
+    

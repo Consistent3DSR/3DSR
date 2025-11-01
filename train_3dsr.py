@@ -32,7 +32,7 @@ import natsort
 from utils.image_utils import psnr
 from argparse import ArgumentParser, Namespace
 from arguments import ModelParams, PipelineParams, OptimizationParams
-from scipy.spatial.transform import Rotation as R, Slerp
+# from scipy.spatial.transform import Rotation as R, Slerp
 import torchvision
 from scene.cameras import Camera
 from PIL import Image
@@ -81,10 +81,8 @@ def prepare_training(dataset, opt, pipe, testing_iterations, saving_iterations, 
         scene = Scene(dataset, gaussians, load_iteration=30000, shuffle=False)
         scene.model_path = args.output_folder
         dataset_name = os.path.basename(dataset.source_path)
-        try:
-            dataset.model_path = os.path.join(args.output_folder, dataset_name)
-        except:
-            import pdb; pdb.set_trace()
+        dataset.model_path = os.path.join(args.output_folder, dataset_name)
+        
         tb_writer = prepare_output_and_logger(dataset)
         scene.model_path = dataset.model_path
     else:
@@ -111,9 +109,6 @@ def training_with_iters(in_dict, dataset, opt, pipe, testing_iterations, saving_
     scene = in_dict['scene']
     gaussians = in_dict['gaussians']
     tb_writer = in_dict['tb_writer']
-    
-    if args.lpips_train_en:
-        lpips_fn = lpips.LPIPS(net='alex').cuda()
     
     first_iter = 0    
     bg_color = [1, 1, 1] if dataset.white_background else [0, 0, 0]
@@ -182,6 +177,8 @@ def training_with_iters(in_dict, dataset, opt, pipe, testing_iterations, saving_
             # subpixel_offset *= 0.0
         else:
             subpixel_offset = None
+            
+        # Rendering
         render_pkg = render(viewpoint_cam, gaussians, pipe, background, kernel_size=dataset.kernel_size, subpixel_offset=subpixel_offset)
         image, viewspace_point_tensor, visibility_filter, radii = render_pkg["render"], render_pkg["viewspace_points"], render_pkg["visibility_filter"], render_pkg["radii"]
 
@@ -193,7 +190,6 @@ def training_with_iters(in_dict, dataset, opt, pipe, testing_iterations, saving_
             gt_image = create_offset_gt(gt_image, subpixel_offset)
         
         Ll1 = l1_loss(image, gt_image)
-                
         loss_hr = (1.0 - opt.lambda_dssim) * Ll1 + opt.lambda_dssim * (1.0 - ssim(image, gt_image))
         loss = loss_hr
         
@@ -206,14 +202,6 @@ def training_with_iters(in_dict, dataset, opt, pipe, testing_iterations, saving_
         
         if args.fidelity_train_en:
             lr_resolution = dataset.resolution * 4
-            # if 'llff' in dataset.source_path:
-            #     gt_folder = '/fs/nexus-projects/dyn3Dscene/Codes/datasets/nerf_llff_data'
-            # else:
-            #     import pdb; pdb.set_trace()
-            #     gt_folder = '/fs/nexus-projects/dyn3Dscene/Codes/data/my_new_resize'
-            # import pdb; pdb.set_trace()
-            # scene_name = os.path.basename(dataset.source_path)
-            # gt_path = os.path.join(gt_folder, scene_name, f'images_{lr_resolution}', viewpoint_cam.image_name+'.png')
             gt_path = os.path.join(dataset.source_path, f'images_{lr_resolution}', viewpoint_cam.image_name+'.png')
             image_gt_lr = Image.open(gt_path)
             w_lr, h_lr = image_gt_lr.size
@@ -221,15 +209,7 @@ def training_with_iters(in_dict, dataset, opt, pipe, testing_iterations, saving_
             image_lr = torch.nn.functional.interpolate(image.unsqueeze(0), scale_factor=0.25, mode='bicubic', antialias=True).squeeze(0)
             loss_lr = (1.0 - opt.lambda_dssim) * l1_loss(image_lr, image_gt_lr) + opt.lambda_dssim * (1.0 - ssim(image_lr, image_gt_lr))
             loss += loss_lr * args.wt_lr
-            # # import pdb; pdb.set_trace()
-            # torchvision.utils.save_image(image_gt_lr, 'gt.png')
-            # torchvision.utils.save_image(image_lr, 'render.png')
-        elif args.lpips_train_en:
-            image_lr = torch.nn.functional.interpolate(image.unsqueeze(0), scale_factor=0.25, mode='bicubic', antialias=True).squeeze(0)
-            gt_image_lr = torch.nn.functional.interpolate(gt_image.unsqueeze(0), size=image_lr.size()[-2:], mode='bicubic', antialias=True).squeeze(0)
-            loss_lpips = lpips_fn(image_lr, gt_image_lr)[0][0][0][0].mean()
-            loss = loss_lpips * args.lpips_wt + loss_hr
-      
+                    
         loss.backward()
         iter_end.record()
         
@@ -407,7 +387,19 @@ def visualize_image(latent, rgb_patch, model_dict, out_img_name=None):
         out.save(out_img_name)
     return out
     
-def train_proposed_2025(dataset, op, pipe, testing_iterations, saving_iterations, checkpoint_iterations, checkpoint, debug_from, args, dataset2=None):
+def train_proposed(dataset, op, pipe, testing_iterations, saving_iterations, checkpoint_iterations, checkpoint, debug_from, args, dataset2=None):    
+    ####################################
+    # Set up for Stable SR
+    ####################################
+    print('>>>>>>>>>>color correction>>>>>>>>>>>')
+    if args.colorfix_type == 'adain':
+        print('Use adain color correction')
+    elif args.colorfix_type == 'wavelet':
+        print('Use wavelet color correction')
+    else:
+        print('No color correction')
+    print('>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>')
+    
     #############################################
     # load StableSR model and scheduler
     #############################################
@@ -419,27 +411,21 @@ def train_proposed_2025(dataset, op, pipe, testing_iterations, saving_iterations
     images_path = np.array(copy.deepcopy(images_path_ori))
     
     # Only taking training views for SR
-    if not 'synthetic' in args.init_img:
-        llffhold = 8
-        all_indices = np.arange(len(images_path))
-        train_indices = all_indices % llffhold != 0
-        sr_indices = all_indices[train_indices]
-        images_path = images_path[sr_indices[:]]
-    
-    # for item in images_path_ori:
-    #     img_name = item.split('/')[-1]
-    #     if os.path.exists(os.path.join(outpath, img_name)):
-    #         print('******* Removed item:', img_name)
-    #         images_path.remove(item)
+    llffhold = 8
+    all_indices = np.arange(len(images_path))
+    train_indices = all_indices % llffhold != 0
+    sr_indices = all_indices[train_indices]
+    images_path = images_path[sr_indices[:]]
     print(f"Found {len(images_path)} inputs.")
-    # import pdb; pdb.set_trace()
     
+    # Prepare model
     out_dict = prepare_model(args)
     model = out_dict['model']
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
     sqrt_alphas_cumprod = copy.deepcopy(model.sqrt_alphas_cumprod)
     sqrt_one_minus_alphas_cumprod = copy.deepcopy(model.sqrt_one_minus_alphas_cumprod)
     
+    # Modify scheduler for fewer steps
     use_timesteps = set(space_timesteps(1000, [args.ddpm_steps]))
     last_alpha_cumprod = 1.0
     new_betas = []
@@ -456,6 +442,7 @@ def train_proposed_2025(dataset, op, pipe, testing_iterations, saving_iterations
     model.ori_timesteps.sort()
     model = model.to(device)
     
+    # Add model and args to out_dict
     out_dict['model'] = model
     out_dict['args'] = args
     precision_scope = autocast if args.precision == "autocast" else nullcontext
@@ -468,7 +455,6 @@ def train_proposed_2025(dataset, op, pipe, testing_iterations, saving_iterations
     scene = input_dict["scene"]
     trainCameras = scene.getTrainCameras()
     
-    # GS_iters = [5000, 3000, 2000, 1000]
     if 'llff' in dataset.source_path:
         dir_name = dataset.source_path
         lr_resolution = dataset.resolution * 4
@@ -713,7 +699,6 @@ def train_proposed_2025(dataset, op, pipe, testing_iterations, saving_iterations
                 # print(img_path)
                 # torchvision.utils.save_image(loaded_image, 'vis.png')
                 # torchvision.utils.save_image(trainCameras[img_id].original_image, 'vis_2.png')
-                # import pdb; pdb.set_trace()
                 trainCameras[img_id].original_image = loaded_image.clone()
                 
             # #############################################
@@ -721,55 +706,13 @@ def train_proposed_2025(dataset, op, pipe, testing_iterations, saving_iterations
             # #############################################
             input_dict = training_with_iters(input_dict, dataset, op, pipe, testing_iterations, saving_iterations,
                                             checkpoint_iterations, checkpoint, debug_from, args, dataset2, SR_iter=iteration,) 
-                             
+
 def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoint_iterations, checkpoint, debug_from, args, dataset2=None):
     first_iter = 0
     tb_writer = prepare_output_and_logger(dataset)
-    gaussians = GaussianModel(dataset.sh_degree)   
-    
-    if args.fidelity_train_en:
-        dataset2.source_path = dataset.source_path.split("_SR")[0]
-        dataset2.resolution = dataset.resolution * 4
-        gaussians2 = GaussianModel(dataset2.sh_degree)
-        scene2 = Scene(dataset2, gaussians2, shuffle=False)
-
-        trainCameras2 = scene2.getTrainCameras().copy()
-        testCameras2 = scene2.getTestCameras().copy()
-        allCameras2 = trainCameras2 + testCameras2
-        viewpoint_stack2 = None
-    
-    if args.load_pretrain:
-        scene = Scene(dataset, gaussians, load_iteration=30000, shuffle=False)
-        scene.model_path = args.output_folder
-        dataset_name = os.path.basename(dataset.source_path)
-        dataset.model_path = os.path.join(args.output_folder, dataset_name)
-        tb_writer = prepare_output_and_logger(dataset)
-        scene.model_path = dataset.model_path
-        
-        if args.prune_init_en:
-            num_points = scene.gaussians._xyz.shape[0]
-            valid_ids = torch.randperm(num_points)[:int(num_points * prune_ratio+0.5)]
-            # Prune points
-            gaussians._xyz = gaussians._xyz[valid_ids].clone().detach()
-            gaussians._features_dc = gaussians._features_dc[valid_ids].clone().detach()
-            gaussians._features_rest = gaussians._features_rest[valid_ids].clone().detach()
-            gaussians._scaling = gaussians._scaling[valid_ids].clone().detach()
-            gaussians._rotation = gaussians._rotation[valid_ids].clone().detach()
-            gaussians._opacity = gaussians._opacity[valid_ids].clone().detach()
-    else:
-        scene = Scene(dataset, gaussians)
-
-    print("--- before super resolving points:", gaussians._xyz.shape[0])
+    gaussians = GaussianModel(dataset.sh_degree)
+    scene = Scene(dataset, gaussians)
     gaussians.training_setup(opt)
-    if args.SR_GS:
-        gaussians.super_resolving_gaussians(2)
-        gaussians.training_setup(opt)
-        print("--- after super resolving points:", gaussians._xyz.shape[0])
-    elif args.load_pretrain:
-        gaussians.max_radii2D = torch.zeros((gaussians.get_xyz.shape[0]), dtype=torch.float32, device="cuda")
-        gaussians.training_setup(opt)
-        print("--- after loading pretrain points:", gaussians._xyz.shape[0])
-
     if checkpoint:
         (model_params, first_iter) = torch.load(checkpoint)
         gaussians.restore(model_params, opt)
@@ -777,13 +720,12 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
 
     bg_color = [1, 1, 1] if dataset.white_background else [0, 0, 0]
     background = torch.tensor(bg_color, dtype=torch.float32, device="cuda")
-
     iter_start = torch.cuda.Event(enable_timing = True)
     iter_end = torch.cuda.Event(enable_timing = True)
 
     trainCameras = scene.getTrainCameras().copy()
     testCameras = scene.getTestCameras().copy()
-    # allCameras = trainCameras + testCameras
+    allCameras = trainCameras + testCameras
     
     # highresolution index
     highresolution_index = []
@@ -795,17 +737,10 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
 
     viewpoint_stack = None
     ema_loss_for_log = 0.0
-    try:
-        progress_bar = tqdm(range(first_iter, opt.iterations), desc="Training progress")
-    except:
-        import pdb; pdb.set_trace()
+    progress_bar = tqdm(range(first_iter, opt.iterations), desc="Training progress")
+    
     first_iter += 1
 
-    if args.lpips_train_en:
-        lpips_fn = lpips.LPIPS(net='vgg').cuda(0)
-    if args.musiq_train_en:
-        metric_musiq = pyiqa.create_metric("musiq").cuda(0)
-    
     num_points = {}
     
     for iteration in range(first_iter, opt.iterations + 1):        
@@ -838,7 +773,6 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
         pop_id = randint(0, len(viewpoint_stack)-1)
         viewpoint_cam = viewpoint_stack.pop(pop_id)
         
-        # Pick a random high resolution camera
         if random.random() < 0.3 and dataset.sample_more_highres:
             viewpoint_cam = trainCameras[highresolution_index[randint(0, len(highresolution_index)-1)]]
             
@@ -860,65 +794,9 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
         # sample gt_image with subpixel offset
         if dataset.resample_gt_image:
             gt_image = create_offset_gt(gt_image, subpixel_offset)
-
-        # edge_aware_loss_en = False
-        if args.edge_aware_loss_en:
-            dx = torch.abs(image[:, :,1:] - image[:,:,:-1])
-            dy = torch.abs(image[:,1:,:] - image[:,:-1,:])
-            dx_norm = dx / dx.max()
-            dy_norm = dy / dy.max()
-                        
-            dx2 = torch.zeros_like(image)
-            dy2 = torch.zeros_like(image)
-            dx2[:,:,1:] = dx_norm
-            dy2[:,1:,:] = dy_norm
-            mix = dx2 + dy2
-            wt = torch.exp(mix)
-            L1_loss = torch.abs((image - gt_image))
-            
-            Ll1 = (L1_loss * wt).mean()
-        else:
-            Ll1 = l1_loss(image, gt_image)
-        loss = (1.0 - opt.lambda_dssim) * Ll1 + opt.lambda_dssim * (1.0 - ssim(image, gt_image))
-        
-        # Save GT image
-        # torchvision.utils.save_image(gt_image, os.path.join('gt.png'))
-        
-        if args.musiq_train_en:
-            musiq_scroe = metric_musiq(image)
-            loss += 1 / musiq_scroe[0][0] * 5
-        
-        # Add LPIPS loss
-        if args.lpips_train_en:
-            lpips_loss = lpips_fn(image, gt_image)[0][0][0][0]
-            # lpips_weight = 0.2
-            loss += lpips_loss * args.lpips_wt
-        
-        # Fidelity training
-        if args.fidelity_train_en:
-            if not viewpoint_stack2:
-                viewpoint_stack2 = scene2.getTrainCameras().copy()
-            viewpoint_cam2 = viewpoint_stack2.pop(pop_id)
-            import pdb; pdb.set_trace()
-            avg_pool = torch.nn.AvgPool2d(kernel_size=4, stride=4, padding=0)
-            img_small = avg_pool(image)
-            gt_img_small = viewpoint_cam2.original_image.cuda()
-            # torchvision.utils.save_image(img_small, "img_small.png")
-            # torchvision.utils.save_image(gt_img_small, "gt_img_small.png")
-            # torchvision.utils.save_image(image, "img.png")
-            # torchvision.utils.save_image(gt_image, "gt_img.png")
-            L1_2 = l1_loss(img_small, gt_img_small)
-            loss += (1.0 - opt.lambda_dssim) * L1_2 + opt.lambda_dssim * (1.0 - ssim(img_small, gt_img_small))
-        
-        if iteration > opt.iterations - len(trainCameras):
-            training_folder = os.path.join(args.output_folder, 'training_with_step')
-            if not os.path.exists(training_folder):
-                os.makedirs(training_folder)
-            file_name = os.path.join(training_folder, viewpoint_cam.image_name + ".png")
-            torchvision.utils.save_image(image, os.path.join(file_name))
-            
+        Ll1 = l1_loss(image, gt_image)
+        loss = (1.0 - opt.lambda_dssim) * Ll1 + opt.lambda_dssim * (1.0 - ssim(image, gt_image))        
         loss.backward()
-
         iter_end.record()
 
         with torch.no_grad():
@@ -932,9 +810,9 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
 
             # Log and save
             training_report(tb_writer, iteration, Ll1, loss, l1_loss, iter_start.elapsed_time(iter_end), testing_iterations, scene, render, (pipe, background, dataset.kernel_size))
-            # if (iteration in saving_iterations):
-            #     print("\n[ITER {}] Saving Gaussians".format(iteration))
-            #     scene.save(iteration)
+            if (iteration in saving_iterations):
+                print("\n[ITER {}] Saving Gaussians".format(iteration))
+                scene.save(iteration)
             if (iteration == opt.iterations):
                 print("\n[ITER {}] Saving Gaussians".format(iteration))
                 scene.save(iteration)
@@ -951,8 +829,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
 
                     if iteration > opt.densify_from_iter and iteration % opt.densification_interval == 0:
                         size_threshold = 20 if iteration > opt.opacity_reset_interval else None
-                        # gaussians.densify_and_prune(opt.densify_grad_threshold, 0.005, scene.cameras_extent, size_threshold)
-                        gaussians.densify_and_prune(opt.densify_grad_threshold, min_opacity, scene.cameras_extent, size_threshold)
+                        gaussians.densify_and_prune(opt.densify_grad_threshold, 0.005, scene.cameras_extent, size_threshold)
                         gaussians.compute_3D_filter(cameras=trainCameras)
 
                     if iteration % opt.opacity_reset_interval == 0 or (dataset.white_background and iteration == opt.densify_from_iter):
@@ -960,7 +837,6 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
 
             if iteration % 100 == 0 and iteration > opt.densify_until_iter:
                 if iteration < opt.iterations - 100:
-                    # don't update in the end of training
                     gaussians.compute_3D_filter(cameras=trainCameras)
             
             if iteration % 500 == 0:
@@ -980,8 +856,6 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                 print("\n[ITER {}] Saving Checkpoint".format(iteration))
                 torch.save((gaussians.capture(), iteration), scene.model_path + "/chkpnt" + str(iteration) + ".pth")
 
-    import pdb; pdb.set_trace()
-        
 def prepare_output_and_logger(args):
     if not args.model_path:
         if os.getenv('OAR_JOB_ID'):
@@ -1002,7 +876,6 @@ def prepare_output_and_logger(args):
         tb_writer = SummaryWriter(args.model_path)
     else:
         print("Tensorboard not available: not logging progress")
-    # import pdb; pdb.set_trace()
     return tb_writer
 
 def training_report(tb_writer, iteration, Ll1, loss, l1_loss, elapsed, testing_iterations, scene : Scene, renderFunc, renderArgs):
@@ -1064,14 +937,13 @@ def parse_args():
     parser.add_argument("--freeze_point", action="store_true")
     parser.add_argument("--SR_GS", action="store_true")
     parser.add_argument("--fidelity_train_en", action="store_true")
-    parser.add_argument("--musiq_train_en", action="store_true")
-    parser.add_argument("--lpips_train_en", action="store_true")    
     parser.add_argument("--prune_init_en", action="store_true")
     parser.add_argument("--seed", type=int, default=999)
     parser.add_argument("--edge_aware_loss_en", action="store_true")
     parser.add_argument("--lpips_wt", type=float, default=0.2)
     parser.add_argument("--wt_lr", type=float, default=0.4)
     parser.add_argument("--densify_end", type=int, default=15000)
+    parser.add_argument("--original", action="store_true")
     #############################################
     #### From Stable SR code ####
     #############################################
@@ -1186,7 +1058,6 @@ def parse_args():
         default=512,
         help="input size",
     )
-    parser.add_argument('--render_HR_pretrain', action='store_true', default=False)
     
     args = parser.parse_args(sys.argv[1:])
     args.save_iterations.append(args.iterations)
@@ -1195,7 +1066,7 @@ def parse_args():
 
 if __name__ == "__main__":
     lp, op, pp, args = parse_args()
-    print("Optimizing " + args.model_path)
+    print("Optimizing " + args.model_path)    
     # Set up random seed
     torch.manual_seed(args.seed)
     random.seed(args.seed)
@@ -1210,20 +1081,11 @@ if __name__ == "__main__":
 
     # Start GUI server, configure and run training
     network_gui.init(args.ip, args.port)
-    torch.autograd.set_detect_anomaly(args.detect_anomaly)
-    
-    ####################################
-    # Set up for Stable SR
-    ####################################
-    print('>>>>>>>>>>color correction>>>>>>>>>>>')
-    if args.colorfix_type == 'adain':
-        print('Use adain color correction')
-    elif args.colorfix_type == 'wavelet':
-        print('Use wavelet color correction')
+    torch.autograd.set_detect_anomaly(args.detect_anomaly)    
+        
+    if args.original:
+        training(lp.extract(args), op.extract(args), pp.extract(args), args.test_iterations, args.save_iterations, args.checkpoint_iterations, args.start_checkpoint, args.debug_from, args)
     else:
-        print('No color correction')
-    print('>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>')
-    
-    train_proposed_2025(lp.extract(args), op.extract(args), pp.extract(args), args.test_iterations, args.save_iterations, args.checkpoint_iterations, args.start_checkpoint, args.debug_from, args)
+        train_proposed(lp.extract(args), op.extract(args), pp.extract(args), args.test_iterations, args.save_iterations, args.checkpoint_iterations, args.start_checkpoint, args.debug_from, args)    
     # All done
     print("\nTraining complete.")

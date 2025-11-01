@@ -528,7 +528,6 @@ class GaussianModel:
         grads_abs = self.xyz_gradient_accum_abs / self.denom
         grads_abs[grads_abs.isnan()] = 0.0
         ratio = (torch.norm(grads, dim=-1) >= max_grad).float().mean()
-        # import pdb; pdb.set_trace()
         # Q = torch.quantile(grads_abs.reshape(-1), 1 - ratio)
         qqq = np.quantile(grads_abs.reshape(-1).cpu().numpy(), 1 - ratio.cpu().numpy())
         

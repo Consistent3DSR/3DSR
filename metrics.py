@@ -57,18 +57,13 @@ def evaluate(model_paths, eval_both_dataset, gt_folder_parent=None):
     metric_clip = pyiqa.create_metric('clipiqa').to(device)
     metric_fid = pyiqa.create_metric('fid').to(device=device)
     
-    # metric_clip = CLIPImageQualityAssessment()
-    # lpips = LearnedPerceptualImagePatchSimilarity(net_type='squeeze').cuda(0)
-
     for scene_dir in model_paths:
         print("scene_dir: ", scene_dir)
-        # try:
         print("Scene:", scene_dir)
         full_dict[scene_dir] = {}
         per_view_dict[scene_dir] = {}
         full_dict_polytopeonly[scene_dir] = {}
-        per_view_dict_polytopeonly[scene_dir] = {}        
-        # under_scene_dir = os.listdir(scene_dir)
+        per_view_dict_polytopeonly[scene_dir] = {}
         under_scene_dir = [name for name in os.listdir(scene_dir) if os.path.isdir(os.path.join(scene_dir, name))]
         
         iter_dirs = []
@@ -86,12 +81,6 @@ def evaluate(model_paths, eval_both_dataset, gt_folder_parent=None):
             if not os.path.isdir(os.path.join(scene_dir, dir)):
                 print(f"Skipping {dir}, not a directory")
                 continue
-            if "spiral" in dir:
-                print(f"Skipping {dir}, it's a video rendering directory")
-                continue
-            if "interpolation" in dir:
-                print(f"Skipping {dir}, it's a video rendering directory")
-                continue
             
             method_dir = Path(scene_dir) / dir
             test_dir = Path(method_dir)
@@ -100,10 +89,7 @@ def evaluate(model_paths, eval_both_dataset, gt_folder_parent=None):
                 print("Folder:", DS_folder)
                 ds_scale = int(DS_folder.split("_")[-1])
                 full_dict[scene_dir][DS_folder] = {}
-                try:
-                    per_view_dict[scene_dir][DS_folder] = {}    
-                except:
-                    import pdb; pdb.set_trace()
+                per_view_dict[scene_dir][DS_folder] = {}
                 
                 full_dict_polytopeonly[scene_dir][DS_folder] = {}
                 per_view_dict_polytopeonly[scene_dir][DS_folder] = {}
@@ -129,32 +115,31 @@ def evaluate(model_paths, eval_both_dataset, gt_folder_parent=None):
                     except:
                         file_names = []
                     
-                    # if 'nerf_synthetic' in scene_dir:
-                    #     gt_dir = DS_dir / f"gt_{ds_scale}"
-                    #     gt_files = sorted(os.listdir(gt_dir))
-                    # elif gt_folder_parent is not None:
-                    #     llffhold = 8
+                    if gt_folder_parent is not None:
+                        llffhold = 8
                         
-                    #     if ds_scale == 1:
-                    #         gt_folder = os.path.join(gt_folder_parent, f"images")
-                    #     else:
-                    #         gt_folder = os.path.join(gt_folder_parent, f"images_{ds_scale}")
+                        if ds_scale == 1:
+                            gt_folder = os.path.join(gt_folder_parent, f"images")
+                        else:
+                            gt_folder = os.path.join(gt_folder_parent, f"images_{ds_scale}")
                                                 
-                    #     gt_files = sorted(os.listdir(gt_folder))
-                    #     all_indices = np.arange(len(gt_files))
-                    #     train_indices = all_indices % llffhold != 0
-                    #     test_indices = all_indices % llffhold == 0
+                        gt_files = sorted(os.listdir(gt_folder))
+                        all_indices = np.arange(len(gt_files))
+                        train_indices = all_indices % llffhold != 0
+                        test_indices = all_indices % llffhold == 0
 
-                    #     if dataset_name == "train":
-                    #         gt_indices = all_indices[train_indices]
-                    #     else:
-                    #         gt_indices = all_indices[test_indices]
-                    #     gt_dir = gt_folder
-                    #     assert len(file_names) == len(gt_indices)
-                    # else:
-                    #     gt_dir = DS_dir / f"gt_{dataset_name}_{ds_scale}"
+                        if dataset_name == "train":
+                            gt_indices = all_indices[train_indices]
+                        else:
+                            gt_indices = all_indices[test_indices]
+                        gt_dir = gt_folder
+                        assert len(file_names) == len(gt_indices)
+                    else:
+                        gt_dir = DS_dir / f"gt_{dataset_name}_{ds_scale}"
+                        
                     gt_dir = Path(str(renders_dir).replace('test_preds', 'gt'))
                     fid_score = metric_fid(gt_dir, renders_dir)
+                
                 for idx in tqdm(range(len(file_names)), desc="Metric evaluation progress"):
                     if file_names[idx].endswith(".png"):
                         render = tf.to_tensor(Image.open(renders_dir / file_names[idx]).convert('RGB')).unsqueeze(0)[:, :3, :, :].cuda()
@@ -165,10 +150,7 @@ def evaluate(model_paths, eval_both_dataset, gt_folder_parent=None):
                             gt = tf.to_tensor(Image.open(gt_dir / file_names[idx]).convert('RGB')).unsqueeze(0)[:, :3, :, :].cuda()
                         ssims.append(ssim(render, gt))
                         psnrs.append(psnr(render, gt))
-                        try:
-                            lpipss.append(lpips_fn(render, gt).detach())
-                        except:                            
-                            import pdb; pdb.set_trace()
+                        lpipss.append(lpips_fn(render, gt).detach())                        
                         musiqs.append(metric_musiq(render, gt).detach())
                         niqes.append(metric_niqe(render, gt).float().detach())
                         clips.append(metric_clip(render).detach())
@@ -220,40 +202,6 @@ def evaluate(model_paths, eval_both_dataset, gt_folder_parent=None):
                     writer.writerow([output_prefix] + [f"{val:.4f}" for val in out_dict.values()])
                 
                 print(f"✅ Transposed results saved to {csv_path}")
-
-            #     full_dict[scene_dir][DS_folder][dataset_name].update({"SSIM": torch.tensor(ssims).mean().item(),
-            #                                             "PSNR": torch.tensor(psnrs).mean().item(),
-            #                                             "LPIPS": torch.tensor(lpipss).mean().item(),
-            #                                             "MUSIQ": torch.tensor(musiqs).mean().item(),
-            #                                             "NIQE": torch.tensor(niqes).mean().item(),
-            #                                             "CLIPIQA": torch.tensor(clips).mean().item()})
-            #     per_view_dict[scene_dir][DS_folder][dataset_name].update({"SSIM": {name: ssim for ssim, name in zip(torch.tensor(ssims).tolist(), image_names)},
-            #                                                 "PSNR": {name: psnr for psnr, name in zip(torch.tensor(psnrs).tolist(), image_names)},
-            #                                                 "LPIPS": {name: lp for lp, name in zip(torch.tensor(lpipss).tolist(), image_names)},
-            #                                                 "MUSIQ": {name: musiq for musiq, name in zip(torch.tensor(musiqs).tolist(), image_names)},
-            #                                                 "NIQE": {name: niqe for niqe, name in zip(torch.tensor(niqes).tolist(), image_names)},
-            #                                                 "CLIPIQA": {name: clip for clip, name in zip(torch.tensor(clips).tolist(), image_names)}})
-            
-            # with open(scene_dir + f"/results_{dir}.json", 'w') as fp:
-            #     json.dump(full_dict[scene_dir], fp, indent=True)
-            # with open(scene_dir + f"/per_view_{dir}.json", 'w') as fp:
-            #     json.dump(per_view_dict[scene_dir], fp, indent=True)
-            
-            # # Save transposed CSV: metric names as columns, values in one row
-            # csv_path = os.path.join(scene_dir, f"results_{dir}_transposed.csv")
-            # with open(csv_path, 'w', newline='') as csvfile:
-            #     writer = csv.writer(csvfile)
-                
-            #     # First row: metric names
-            #     writer.writerow(["Metric"] + list(full_dict[scene_dir][DS_folder][dataset_name].keys()))
-                
-            #     # Second row: values
-            #     writer.writerow(
-            #         [f"{scene_dir}_{DS_folder}_{dataset_name}"] +
-            #         [f"{v:.4f}" for v in full_dict[scene_dir][DS_folder][dataset_name].values()]
-            #     )
-
-            # print(f"✅ Transposed results saved to {csv_path}")            
 
 if __name__ == "__main__":
     device = torch.device("cuda:0")
