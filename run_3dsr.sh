@@ -3,7 +3,6 @@
 # User-configurable parameters
 ######################################################################
 dataset_name="mipnerf360" #choose from [mipnerf360, llff]
-# dataset_path="/fs/nexus-projects/dyn3Dscene/Codes/data/my_new_resize"
 dataset_path="path/to/your/dataset"
 # GPU ID
 gpu=0
@@ -17,30 +16,30 @@ output_dir="./outputs/LR_pretrained/input_DS_$((HR_factor * 4))"
 exp_dir="./outputs/${dataset_name}/load_DS_$((HR_factor * 4))"
 ######################################################################
 
-# Mip-NeRF 360 scenes
-scenes=(
-   "bicycle"
-   "flowers"
-   "garden"
-   "stump"
-   "treehill"
-   "room"
-   "counter"
-   "kitchen"
-   "bonsai"
-)
-
-# LLFF scenes
-# scenes=(
-#     "fern" 
-#     "flower" 
-#     "fortress" 
-#     "horns" 
-#     "leaves"
-#     "orchids" 
-#     "room" 
-#     "trex"
-# )
+if [ "$dataset_name" == "llff" ]; then
+  scenes=(
+    "fern" 
+    "flower" 
+    "fortress" 
+    "horns" 
+    "leaves"
+    "orchids" 
+    "room" 
+    "trex"
+  )
+else
+  scenes=(
+    "bicycle"
+    "flowers"
+    "garden"
+    "stump"
+    "treehill"
+    "room"
+    "counter"
+    "kitchen"
+    "bonsai"
+  )
+fi
 
 # Loop through each scene
 for scene in "${scenes[@]}"; do    

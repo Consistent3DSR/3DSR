@@ -90,18 +90,27 @@ This is to fix the issue of resolution difference when high resolution images' r
 ```
 
 # Training and Evaluation
+Please modify the codes in file run_3dsr.sh for the user configuration parameters
 ```
-# Pretrained LR models
-python scripts/run_nerf_synthetic_stmt.py 
-
-# multi-scale training and multi-scale testing on NeRF-synthetic dataset
-python scripts/run_nerf_synthetic_mtmt.py 
-
-# single-scale training and single-scale testing on the mip-nerf 360 dataset
-python scripts/run_mipnerf360.py 
-
-# single-scale training and multi-scale testing on the mip-nerf 360 dataset
-python scripts/run_mipnerf360_stmt.py 
+######################################################################
+# User-configurable parameters
+######################################################################
+dataset_name="mipnerf360" #choose from [mipnerf360, llff]
+dataset_path="path/to/your/dataset"
+# GPU ID
+gpu=0
+# HR resolution downscale factor
+HR_factor=4
+# Number of GS training iterations for each diffusion step
+GS_iters=1000
+# Pretrained LR model path
+output_dir="./outputs/LR_pretrained/input_DS_$((HR_factor * 4))"
+# Define 3DSR experiment directory    
+exp_dir="./outputs/${dataset_name}/load_DS_$((HR_factor * 4))"
+######################################################################
+```
+```
+sh run_3dsr.sh
 ```
 
 # Acknowledgements
