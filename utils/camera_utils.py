@@ -24,7 +24,6 @@ def loadCam(args, id, cam_info, resolution_scale):
     orig_w, orig_h = cam_info.image.size
     if args.resolution in [1, 2, 4, 8, 16, 32, 64]:
         resolution = round(orig_w/(resolution_scale * args.resolution)), round(orig_h/(resolution_scale * args.resolution))
-        # Jamie
         if not (args.resolution > 1 and f"images_{args.resolution}" in cam_info.image_path):
             resolution = round(orig_w/(resolution_scale * args.resolution)), round(orig_h/(resolution_scale * args.resolution))
         else:

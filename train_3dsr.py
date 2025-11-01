@@ -536,7 +536,7 @@ def train_proposed(dataset, op, pipe, testing_iterations, saving_iterations, che
                         imgs.append(cur_image)
                     imgs = torch.cat(imgs, dim=0)
                     
-                print("************** ITERATION", 3-iteration, "**************")
+                print("************** Diffusion step ", 3-iteration, "**************")
                 with torch.no_grad():
                     with precision_scope("cuda"):
                         #############################################

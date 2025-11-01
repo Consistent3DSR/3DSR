@@ -25,8 +25,6 @@ import numpy as np
 from torchvision.transforms import Resize
 import torchvision
 import pyiqa
-# from torchmetrics.multimodal import CLIPImageQualityAssessment
-# from torchmetrics.image.lpip import LearnedPerceptualImagePatchSimilarity
 
 def readImages(renders_dir, gt_dir):
     renders = []
@@ -52,9 +50,7 @@ def evaluate(model_paths, eval_both_dataset, gt_folder_parent=None):
     per_view_dict = {}
     full_dict_polytopeonly = {}
     per_view_dict_polytopeonly = {}
-    metric_musiq = pyiqa.create_metric("musiq").cuda(0)
     metric_niqe = pyiqa.create_metric('niqe', device=device)
-    metric_clip = pyiqa.create_metric('clipiqa').to(device)
     metric_fid = pyiqa.create_metric('fid').to(device=device)
     
     for scene_dir in model_paths:
@@ -105,13 +101,12 @@ def evaluate(model_paths, eval_both_dataset, gt_folder_parent=None):
                     ssims = []
                     psnrs = []
                     lpipss = []
-                    musiqs = []
                     niqes = []
-                    clips = []
                     image_names = []
                     try:
                         file_names = os.listdir(renders_dir)
-                        file_names = sorted(file_names)
+                        image_files = [f for f in file_names if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
+                        file_names = sorted(image_files)
                     except:
                         file_names = []
                     
@@ -151,18 +146,14 @@ def evaluate(model_paths, eval_both_dataset, gt_folder_parent=None):
                         ssims.append(ssim(render, gt))
                         psnrs.append(psnr(render, gt))
                         lpipss.append(lpips_fn(render, gt).detach())                        
-                        musiqs.append(metric_musiq(render, gt).detach())
                         niqes.append(metric_niqe(render, gt).float().detach())
-                        clips.append(metric_clip(render).detach())
                         image_names.append(file_names[idx])
                     torch.cuda.empty_cache()
 
                 print("  SSIM : {:>12.7f}".format(torch.tensor(ssims).mean(), ".5"))
                 print("  PSNR : {:>12.7f}".format(torch.tensor(psnrs).mean(), ".5"))
                 print("  LPIPS: {:>12.7f}".format(torch.tensor(lpipss).mean(), ".5"))
-                print("  MUSIQ: {:>12.7f}".format(torch.tensor(musiqs).mean(), ".5"))
                 print("  NIQE: {:>12.7f}".format(torch.tensor(niqes).mean(), ".5"))
-                print("  CLIPIQA: {:>12.7f}".format(torch.tensor(clips).mean(), ".5"))
                 print(f"FID score: {fid_score}")
                 print("")
                 
@@ -171,9 +162,7 @@ def evaluate(model_paths, eval_both_dataset, gt_folder_parent=None):
                     "SSIM": torch.tensor(ssims).mean().item(),
                     "PSNR": torch.tensor(psnrs).mean().item(),
                     "LPIPS": torch.tensor(lpipss).mean().item(),
-                    "MUSIQ": torch.tensor(musiqs).mean().item(),
                     "NIQE": torch.tensor(niqes).mean().item(),
-                    "CLIPIQA": torch.tensor(clips).mean().item(),
                     "FID": fid_score
                 }
                 
@@ -181,9 +170,7 @@ def evaluate(model_paths, eval_both_dataset, gt_folder_parent=None):
                     "SSIM": dict(zip(image_names, torch.tensor(ssims).tolist())),
                     "PSNR": dict(zip(image_names, torch.tensor(psnrs).tolist())),
                     "LPIPS": dict(zip(image_names, torch.tensor(lpipss).tolist())),
-                    "MUSIQ": dict(zip(image_names, torch.tensor(musiqs).tolist())),
                     "NIQE": dict(zip(image_names, torch.tensor(niqes).tolist())),
-                    "CLIPIQA": dict(zip(image_names, torch.tensor(clips).tolist())),
                 }
 
                 output_prefix = os.path.basename(str(renders_dir).rstrip('/'))
